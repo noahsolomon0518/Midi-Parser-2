@@ -3,7 +3,9 @@ import unittest
 from midi_parser.music_generators import OnOffPiece, MultiNetPiece
 from midi_parser.decimal_encoders import DecimalEncoderOnOff, DecimalEncoderMultiNet, DecimalEncoderMultiNet2
 
+encoded = DecimalEncoderOnOff("test/test_data/midis/Bwv768 Chorale and Variations/what", 1/64, 50, convertToC=False).encode()
 encoded = DecimalEncoderOnOff("test/test_data/midis", 1/64, 50).encode()
+
 encodedMulti = DecimalEncoderMultiNet("test/test_data/midis", 1/64, 50).encode()
 encodedMulti2 = DecimalEncoderMultiNet2("test/test_data/midis", 1/64, 50).encode()
 
@@ -16,7 +18,7 @@ class TestOnOffPiece(TestCase):
 
 
     def test_play(self):
-        piece = OnOffPiece(encoded[0][:80], 1/64)
+        piece = OnOffPiece(encoded[0][:200], 1/64)
         piece.play()
 
     def test_save(self):

@@ -39,7 +39,7 @@ class Note:
     def copy(self):
         return Note(self.note, self.time, self.type, self.velocity, self.instrument)
 
-#Used for OnOff decimal encoder. Also an abstraction for other one tracks
+#Used for OnOff decimal encoder. Also an abstraction for other one tracks. Onetracks are flattened midis
 class OneTrack:
 
     MIDDLE_C = 60
@@ -116,8 +116,9 @@ class OneTrack:
         #Only does full conversion if valid. Otherwise self.noteRel=[] and is not parsed
         if(self._isValid()):
             self.needKey = (self.convertToC == True or self.scales != "both")
-            self.halfStepsAboveC = OneTrack.halfStepsAboveC[self.key.replace("m", "")]
-            self.halfStepsBelowC = 14 - OneTrack.halfStepsAboveC[self.key.replace("m", "")]
+            if(self.needKey):
+                self.halfStepsAboveC = OneTrack.halfStepsAboveC[self.key.replace("m", "")]
+                self.halfStepsBelowC = 14 - OneTrack.halfStepsAboveC[self.key.replace("m", "")]
             self._convertToNotesRel()
             self._applyMinMaxOctave()
 
@@ -202,7 +203,7 @@ class OneTrack:
 
     #Can define custom time conversions in different implementations
     def _timeConversion(self, _time):
-        return int(math.ceil(_time*(1/self.tpb)/4/self.smallestTimeUnit))
+        return int(math.ceil((_time*(1/self.tpb)/4)/self.smallestTimeUnit))
 
 
 class OneTrackOnOnly(OneTrack):

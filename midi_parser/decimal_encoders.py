@@ -10,21 +10,18 @@ import warnings
 
 
 
-
-# Takes list of paths (or just one), and parses into mido object
 def parseToMidos(paths):
-    midos = []
+    midiObjs = []
 
     if(type(paths) != list):
         paths = [paths]
 
     for _path in paths:
-        midos.append(MidiFile(_path, type=0))
+        midiObjs.append(MidiFile(_path, type=0))
 
-    return midos
+    return midiObjs
 
 
-# Recursively creates list of midi files in directory
 def findMidis(folder, r=True):
     paths = []
     if(".mid" in folder):
