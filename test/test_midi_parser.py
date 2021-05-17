@@ -27,6 +27,20 @@ class TestMidiParser(TestCase):
         mp = MidiParser((46,84), 1/32, True, "relative", folder = "test/test_data/midis", debugLevel = "DEBUG")
         parsed = mp.parse()
         self.assertGreater(len(parsed),0)
+    
+
+    def test_parse_durational(self):
+        mp = MidiParser((46,84), 1/32, True, "durational", folder = "test/test_data/midis", debugLevel = "DEBUG")
+        parsed = mp.parse()
+        self.assertGreater(len(parsed),0)
+        
+    def test_serialize(self):
+        mp = MidiParser((46,84), 1/32, True, "durational", folder = "test/test_data/midis", debugLevel = "DEBUG")
+        mp.serialize("test/test_data/serialized_durational")
+    
+    def test_deserialize(self):
+        parsed = MidiParser.deSerialize("test/test_data/serialized_durational")
+        print("DESERIALIZED" , parsed)
         
 
 
@@ -37,16 +51,16 @@ class TestOneTrack(TestCase):
 
     def test_with_single_midi(self):
         mf = MidiFile("test/test_data/midis/Bwv768 Chorale and Variations/bsgjg_a.mid")
-        ot = OneTrack(mf, 0, 1/32)
+        ot = OneTrack(mf, (46,84), 1/32, True, "relative")
         print("ticks per beats",ot.tpb)
  
 
 
         
     def test_play(self):
-        timeUnitSeconds = 4/128
-        mf = MidiFile("test/test_data/midis/Bwv768 Chorale and Variations/bsgjg_a.mid")
-        ot = OneTrack(mf, 0, 1/64)
+        timeUnitSeconds = 4/512
+        mf = MidiFile("test/test_data/midis/Bwv768 Chorale and Variations/bsgjg_f.mid")
+        ot = OneTrack(mf,  (46,84), 1/256, True, "relative")
         fs = fluidsynth.Synth()
         fs.start()
         sfid = fs.sfload(sf2)
@@ -59,3 +73,5 @@ class TestOneTrack(TestCase):
                 fs.noteon(0, msg.pitch, 100)
             else:
                 fs.noteoff(0, msg.pitch)
+
+

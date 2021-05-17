@@ -7,6 +7,7 @@ import numpy as np
 from mido import MetaMessage, MidiTrack
 import math
 import logging
+import pickle
 
 """
 This module provides tools that are strictly used for parsing midis
@@ -84,6 +85,7 @@ class MidiParser:
         logger.handlers[0].setLevel(debugLevel)
         self.logger = logger
         self.noteRange = noteRange
+        self.timeMeasurement = timeMeasurement
         self.smallestTimeUnit = smallestTimeUnit
         self.convertToC = convertToC
 
@@ -126,53 +128,50 @@ class MidiParser:
         ots = []
         self.midos = parseToMidos(self.midiPaths)
         for _mido in self.midos:
-            ot = OneTrack(_mido, self.noteRange, self.smallestTimeUnit, self.convertToC)
+            ot = OneTrack(_mido, self.noteRange, self.smallestTimeUnit, self.convertToC, self.timeMeasurement)
             if(ot.valid):
                 ots.append(ot.track)
         self.logger.info("Successfully parsed {} midis".format(len(ots)))
         return ots
 
 
-        
-        
-
-    def getTimeDistribution(self):
-        """
-        Allows you to see how the time units are distributed
-
-        Returns: List of frequency tuples ordered
-        """
-        pass
 
     
-    def serialize(self, folder):
+    def serialize(self, fp):
         """
         Writes parsed one tracks to disk
 
         Parameters
         ----------
-        folder: str
+        fp: str
             folder at which OneTracks will be written to
         """
-
-        pass
+        parsed = self.parse()
+        f = open(fp,"wb")
+        pickle.dump(parsed,f)
+        f.close()
+        logger.info("Successfully serialized parsed midis at {}".format(fp))
+        
 
 
     @staticmethod
-    def deSerialize(folder):
+    def deSerialize(fp):
         """
         As name suggest deserializes pickled OneTracks
 
         Parameters
         ----------
-        folder: str
+        fp: str
             folder at which OneTracks will be written to
         """
-        pass
+        f = open(fp,"rb")
+        parsed = pickle.load(f)
+        f.close()
+        return parsed
 
 
 
-#Time is assumed to be measured in ticks. A function can convert to seconds and time units depending on tpb, tempo
+#Time is assumed to be measured in ticks. A function can convert to seconds and time units depending on tpb
 class Note:
 
     MAX_NOTE = 127
@@ -188,7 +187,7 @@ class Note:
 
         Parameters
         ----------
-        type: str -> ["rest", "note_on", "note_off"]
+        type: str -> ["time_unit", "note_on", "note_off"]
             The type of Note it is
         pitch: int
             Midi integer representation of note pitch
@@ -278,27 +277,56 @@ class DurationalNote(Note):
         """
         Note time is measured in duration (time note is played for in ticks)
         """
-        super().__init__(self, type, time, pitch = pitch, instrument = instrument, velocity = velocity)
+        super().__init__(type, time, pitch = pitch, instrument = instrument, velocity = velocity)
     
     def convertToRelative(self, time):
         return RelativeNote(self.type, time, pitch = self.pitch, instrument = self.instrument, velocity = self.velocity)
     
     def __str__(self):
-        return {
+        return str({
             "type": self.type,
             "time": self.time,
             "pitch": self.pitch
-        }
+        })
 
 #Implementation is not general. Specifically for the OneTracks.
 class OneTrack:
-    def __init__(self, mido, noteRange, smallestTimeUnit, convertToC):
+
+    halfStepsAboveC = {
+        "C":0,
+        "B#":0,
+        "Db":1,
+        "C#":1,
+        "D":2,
+        "Eb":3,
+        "D#":3,
+        "Fb":4,
+        "E":4,
+        "E#":5,
+        "F":5,
+        "F#":6,
+        "Gb":6,
+        "G":7,
+        "G#":8,
+        "Ab":8,
+        "A":9,
+        "A#":10,
+        "Bb":10,
+        "B":11
+    }
+    
+    def __init__(self, mido, noteRange, smallestTimeUnit, convertToC, timeMeasurement, name = None):
         """
         OneTracks automatically perform many functions that decimal encoders need in order to do their encoding.
         As the name suggest the tracks of a midi are flattened to one. 
         """
+       
+        self.minNote, self.maxNote = noteRange
         self.convertToC = convertToC
-        self.name = mido.tracks[0][0].name
+        try:
+            self.name = mido.tracks[0][0].name
+        except: 
+            self.name = name
         self.key = self._extractKeySignature(mido)
         self.tpb = mido.ticks_per_beat
         self.smallestTimeUnit = smallestTimeUnit
@@ -307,14 +335,21 @@ class OneTrack:
         self.track = None
         self.valid = self._checkValid()
         if(self.valid):
+            self.halfStepsBelowC = 12 - OneTrack.halfStepsAboveC[self.key.replace("m", "")]
             for track in mido.tracks:
                 self._addChannel(track)
             self.track = self._flatten()
+            if(timeMeasurement=="durational"):
+                self._convertDurational()
         else:
             logger.debug("No key signature found for {}".format(self.name))
     
 
-    
+    def _initialTimeConversion(self, mido):
+        for track in mido.tracks:
+            for msg in track:
+                msg.time = self._timeConversion(msg.time)
+
 
     def _extractKeySignature(self, mido):
         for track in mido.tracks:
@@ -323,6 +358,7 @@ class OneTrack:
                     return msg.key
         return None
 
+    #Combines all synchronous tracks together into one track
     def _flatten(self):
         notes = []
         for i in range(sum([len(channel)-1 for channel in self.channels])):
@@ -333,8 +369,32 @@ class OneTrack:
             self.currentTime += nextNote.time
             if(self._isNote(nextNote)):
                 relativeNote = RelativeNote(type = nextNote.type, time = self._timeConversion(nextNote.time), pitch = nextNote.note, velocity = nextNote.velocity)
+                if(self.convertToC):
+                    self._convertToC(relativeNote)
+                self._applyNoteRange(relativeNote)
                 notes.append(relativeNote)
         return notes
+    
+    #If timeMeasurement is durational 
+    def _convertDurational(self):
+        """
+        Note times are durational.
+        """
+        notesTimed = []
+        for i, note in enumerate(self.track):
+            if(note.time>0):
+                notesTimed.append(DurationalNote("time_unit", note.time))
+            if(note.type == "note_on"):
+                noteNum = note.pitch
+                dt = 0
+                for nextNote in self.track[i:]:
+                    if(nextNote.type == "note_off" and nextNote.pitch == noteNum):
+                        dt+=nextNote.time 
+                        break
+                    dt+=nextNote.time 
+                notesTimed.append(note.convertToDurational(dt))
+        self.track = notesTimed
+
 
 
     def _checkValid(self):
@@ -342,11 +402,24 @@ class OneTrack:
             return False
         return True
 
-
+    def _convertToC(self, note):
+        note.transpose(self.halfStepsBelowC if self.halfStepsBelowC<=6 else self.halfStepsBelowC - 12)
+        
+    def _applyNoteRange(self, note):
+        if(note.pitch>self.maxNote):
+            octavesToShift = (((note.pitch-self.maxNote)//12) + 1)
+            note.trasnpose(-12 * octavesToShift)
+        elif(note.pitch<self.minNote):
+            octavesToShift = (((self.minNote - note.pitch)//12) + 1)
+            note.transpose(12 * octavesToShift)
+    
     def _addChannel(self,lst):
         self.channels.append(Channel(lst))
 
     def _timeConversion(self, _time):
+        converted = _time*(1/self.tpb)/4/self.smallestTimeUnit
+        if(converted>0 and converted<1):
+            return 1
         return int(round(_time*(1/self.tpb)/4/self.smallestTimeUnit))
 
     def _isNote(self,msg):
@@ -357,6 +430,8 @@ class OneTrack:
     
     def _advanceChannel(self, ind):
         self.channels[ind].advance()
+
+
 
 
 
@@ -383,6 +458,27 @@ class Channel:
 
 
 
+
+
+
+class MidiAnalyzer:
+
+    def __init__(self, folder):
+        """
+        Used for configuring parameters in MidiParser. For example smallest time unit
+
+        Parameters
+        ----------
+        folder: str
+            folder of midis
+        """
+
+        self.midos = parseToMidos(findMidis(folder))
+
+
+
+
+
     
 
 
@@ -392,8 +488,6 @@ class Channel:
         
 
         
-
-
 
 
 
