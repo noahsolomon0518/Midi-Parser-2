@@ -6,6 +6,7 @@ from .decimal_encoders import DecimalEncoderMultiNet2, DecimalEncoderMultiNet, D
 import keras
 import numpy as np
 from .pieces import MultiNetPiece
+import itertools
 
 
 #Takes one hot encoded vectors and converts them to their respective integers. Good for testing
@@ -19,7 +20,7 @@ def encodeFromOneHot(generated):
 
 class DataGenOnOff(keras.utils.Sequence):
 
-    def __init__(self, decimalEncoder,  batchSize=32, lookback=50, gap = 5):
+    def __init__(self, encodedMidis,  batchSize=32, lookback=50, gap = 5):
         """
         Data generator for on off encoder
 
@@ -37,25 +38,21 @@ class DataGenOnOff(keras.utils.Sequence):
         gap: int
             At which interval samples will be picked out of piece
         """
-        _range = self._calculateRange(decimalEncoder.minNote, decimalEncoder.maxNote, decimalEncoder.nClassesTimes)
+        self.encodedMidis = encodedMidis
+        _range = self._calculateRange()
+        print(_range)
         self.ohe = OneHotEncoder(categories = [_range], sparse = False)
-        self.decimalEncoder = decimalEncoder
-        self.encoded = decimalEncoder.encode()
         self.gap = gap
         self.lookback = lookback
         self.batchSize = batchSize
-        self.nClassesTimes = decimalEncoder.nClassesTimes
-        self.indices = np.array([(pieceInd,noteInd) for pieceInd in range(len(self.encoded)) for noteInd in range(len(self.encoded[pieceInd]))  if noteInd%gap == 0 and (noteInd+1)< len(self.encoded[pieceInd])-self.lookback])
+        self.indices = np.array([(pieceInd,noteInd) for pieceInd in range(len(encodedMidis)) for noteInd in range(len(self.encodedMidis[pieceInd]))  if noteInd%gap == 0 and (noteInd+1)< len(self.encodedMidis[pieceInd])-self.lookback])
         self._shuffleInds()
 
 
 
     #Returns all possible values that OneHotEncoder might take in    
-    def _calculateRange(self, minNote, maxNote, nClassesTimes):
-        possibleNoteOffs = np.arange(minNote, maxNote+1)
-        possibleNoteOns = np.arange(minNote+150, maxNote+151)
-        possibleTimes = np.arange(300, 300+nClassesTimes)
-        return np.concatenate([possibleNoteOffs, possibleNoteOns,  possibleTimes], axis = 0)
+    def _calculateRange(self):
+        return list(set(itertools.chain.from_iterable([piece for piece in self.encodedMidis])))
 
     #Calculates how many batches to cycle through all data
     def __len__(self):
@@ -67,8 +64,8 @@ class DataGenOnOff(keras.utils.Sequence):
     def __getitem__(self, index):
         xIndices = self.indices[index*self.batchSize:(index+1)*self.batchSize]
         yIndices = np.array(list(map(lambda x: (x[0], x[1]+self.lookback),xIndices)))
-        xEncoded = np.array(list(map(lambda x: self.encoded[x[0]][x[1]:x[1]+self.lookback], xIndices)))
-        yEncoded = np.array(list(map(lambda y: self.encoded[y[0]][y[1]], yIndices)))
+        xEncoded = np.array(list(map(lambda x: self.encodedMidis[x[0]][x[1]:x[1]+self.lookback], xIndices)))
+        yEncoded = np.array(list(map(lambda y: self.encodedMidis[y[0]][y[1]], yIndices)))
         X, y = self.__data_generation(xEncoded, yEncoded)
 
         return X, y

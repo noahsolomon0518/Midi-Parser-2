@@ -1,29 +1,36 @@
+from midi_parser.midi_parser import MidiParser
 from unittest import TestCase
-import unittest
+
 from midi_parser.pieces import OnOffPiece, MultiNetPiece
-from midi_parser.data_generators import DataGenOnOff, encodeFromOneHot, DataGenMultiNet, DataGenEmbeddedMultiNet
+from midi_parser.data_generators import DataGenOnOff, DataGenMultiNet, DataGenEmbeddedMultiNet
 from midi_parser.decimal_encoders import DecimalEncoderOnOff, DecimalEncoderMultiNet, DecimalEncoderMultiNet2
 
-encoder = DecimalEncoderOnOff("test/test_data/midis", 1/64, 40)
-encoderMultiNet = DecimalEncoderMultiNet("test/test_data/midis", 1/64, 40)
-encoderMultiNet2 = DecimalEncoderMultiNet2("test/test_data/midis", 1/64, 40)
+relativeParsed = MidiParser.deSerialize("test/test_data/serialized_relative")
+relativeParsed = MidiParser((46,84), 1/128, True, "relative", "test/test_data/midis").parse()
+encoded = DecimalEncoderOnOff(relativeParsed).encode()
 
-print("YERT")
+
+
 class TestDataGeneratorOnOff(TestCase):
     
 
     def test_init(self):
-        datagen = DataGenOnOff(encoder,50)
+        datagen = DataGenOnOff(encoded,50)
         
 
     def test_get_data(self):
-        datagen = DataGenOnOff(encoder, 10,  lookback=50)
+        datagen = DataGenOnOff(encoded, 10,  lookback=50)
         data = datagen.__getitem__(0)
-    
+        print(data)
 
     def test_play_sample(self):
-        datagen = DataGenOnOff(encoder, 10,  lookback=100)
-        data = datagen.__getitem__(0)
+        mp = MidiParser((46, 84), 1/64, True, "relative", "test/test_data/midis/Bwv768 Chorale and Variations", "DEBUG")
+        parsed = mp.parse()
+        encoder = DecimalEncoderOnOff(parsed)
+        encoded = encoder.encode()
+        datagen = DataGenOnOff(encoded, 32, 100, 5)
+        data = datagen.__getitem__(5)
+        print(encoded[0])
         piece = OnOffPiece(datagen.ohe.inverse_transform(data[0][0]).reshape(-1).tolist(), 1/64)
         piece.play()
 

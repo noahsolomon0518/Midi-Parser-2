@@ -1,3 +1,4 @@
+import itertools
 from os import walk, path
 from mido import MidiFile
 from numpy import argmin
@@ -59,11 +60,7 @@ def findMidis(folder, r=True):
 class MidiParser:
     def __init__(self, noteRange, smallestTimeUnit, convertToC, timeMeasurement, folder = None, debugLevel = logging.ERROR):
         """
-        Standard parsing of a collection of midis
-            There are a couple ways to use this class:
-            1. Directly input already initted MidiParser into DecimalEncoder.
-            2. Call serialize function and input the folder path into Decimal Encoder.
-            3. Pass parsed OneTracks into MidiParser
+        General use parser for midis
 
         Parameters
         ----------
@@ -231,6 +228,34 @@ class Note:
         self.pitch += n*Note.NOTES_IN_OCTAVE
         self._checkNote()
 
+    def convertToRelative(self, time):
+        """
+        Parameters
+        ----------
+        time: int
+            time in relative dt
+        """
+        return RelativeNote(self.type, time, pitch = self.pitch, instrument = self.instrument, velocity = self.velocity)
+    
+
+    def convertToDurational(self, time):
+        """
+        Parameters
+        ----------
+        time: int
+            time in absolute
+        """
+        return DurationalNote(self.type, time, pitch = self.pitch, instrument = self.instrument, velocity = self.velocity)
+    
+    def convertToAbsolute(self, time):
+        """
+        Parameters
+        ----------
+        time: int
+            time in absolute
+        """
+        return AbsoluteNote(self.type, time, pitch = self.pitch, instrument = self.instrument, velocity = self.velocity)
+
 
     def _noneify(self, var):
         if(var!=None):
@@ -242,28 +267,7 @@ class Note:
             raise Exception("Note pitch exceeds max midi note of 127")
         if(self.pitch<Note.MIN_NOTE):
             raise Exception("Note pitch exceeds min midi note of 0")
-
-
-class RelativeNote(Note):
-    def __init__(self, type, time, pitch = None, instrument = None, velocity = None):
-        """
-        Note time is measured in dt (change in time in ticks)
-        """
-        super().__init__(type = type, time = time, pitch = pitch, instrument = instrument, velocity = velocity)
     
-    def convertToDurational(self, time):
-        """
-        When you have a relative note and its absolute time this returns the relative note with the
-        absolute time.
-
-        Parameters
-        ----------
-        time: int
-            time in absolute
-        """
-        return DurationalNote(self.type, time, pitch = self.pitch, instrument = self.instrument, velocity = self.velocity)
-    
-
     def __str__(self):
         return str({
             "type": self.type,
@@ -271,6 +275,20 @@ class RelativeNote(Note):
             "pitch": self.pitch
         })
 
+
+class AbsoluteNote(Note):
+    def __init__(self, type, time, pitch = None, instrument = None, velocity = None):
+        """
+        Note time is measure in absolute ticks
+        """
+        super().__init__(type = type, time = time, pitch = pitch, instrument = instrument, velocity = velocity)
+
+class RelativeNote(Note):
+    def __init__(self, type, time, pitch = None, instrument = None, velocity = None):
+        """
+        Note time is measured in dt (change in time in ticks)
+        """
+        super().__init__(type = type, time = time, pitch = pitch, instrument = instrument, velocity = velocity)
 
 class DurationalNote(Note):
     def __init__(self, type, time, pitch = None, instrument = None, velocity = None):
@@ -279,15 +297,6 @@ class DurationalNote(Note):
         """
         super().__init__(type, time, pitch = pitch, instrument = instrument, velocity = velocity)
     
-    def convertToRelative(self, time):
-        return RelativeNote(self.type, time, pitch = self.pitch, instrument = self.instrument, velocity = self.velocity)
-    
-    def __str__(self):
-        return str({
-            "type": self.type,
-            "time": self.time,
-            "pitch": self.pitch
-        })
 
 #Implementation is not general. Specifically for the OneTracks.
 class OneTrack:
@@ -320,7 +329,6 @@ class OneTrack:
         OneTracks automatically perform many functions that decimal encoders need in order to do their encoding.
         As the name suggest the tracks of a midi are flattened to one. 
         """
-       
         self.minNote, self.maxNote = noteRange
         self.convertToC = convertToC
         try:
@@ -336,19 +344,19 @@ class OneTrack:
         self.valid = self._checkValid()
         if(self.valid):
             self.halfStepsBelowC = 12 - OneTrack.halfStepsAboveC[self.key.replace("m", "")]
-            for track in mido.tracks:
-                self._addChannel(track)
-            self.track = self._flatten()
+            self.track = self._flatten(mido)
+            if(len(self.track) < 10):      
+                self.valid == False
+                logger.debug("Piece {} has length of 0".format(self.name))
             if(timeMeasurement=="durational"):
                 self._convertDurational()
+            self._applyConstraints()
         else:
             logger.debug("No key signature found for {}".format(self.name))
+        
     
 
-    def _initialTimeConversion(self, mido):
-        for track in mido.tracks:
-            for msg in track:
-                msg.time = self._timeConversion(msg.time)
+
 
 
     def _extractKeySignature(self, mido):
@@ -359,22 +367,51 @@ class OneTrack:
         return None
 
     #Combines all synchronous tracks together into one track
-    def _flatten(self):
+    def _flatten(self, mido):
         notes = []
-        for i in range(sum([len(channel)-1 for channel in self.channels])):
-            increasedTimes = [channel.getNextIncreasedTime() for channel in self.channels]
-            ind = self._getArgMin(increasedTimes)
-            nextNote, noteTime = self.channels[ind].advance()
-            nextNote.time = noteTime - self.currentTime
-            self.currentTime += nextNote.time
-            if(self._isNote(nextNote)):
-                relativeNote = RelativeNote(type = nextNote.type, time = self._timeConversion(nextNote.time), pitch = nextNote.note, velocity = nextNote.velocity)
-                if(self.convertToC):
-                    self._convertToC(relativeNote)
-                self._applyNoteRange(relativeNote)
-                notes.append(relativeNote)
-        return notes
+
+        absoluteTrack = list(itertools.chain.from_iterable([self._convertAbsolute(track) for track in mido.tracks]))
+        absoluteTrack.sort(key = lambda x: x.time)
+
+        relativeTrack = self._convertRelative( absoluteTrack)
+        return relativeTrack
     
+
+    def _convertAbsolute(self, track):
+        absoluteTime = 0
+        absoluteTrack = []
+        for msg in track:
+            absoluteTime += msg.time
+            if(self._isNote(msg)):
+                absoluteTrack.append(AbsoluteNote(msg.type, absoluteTime, msg.note, velocity=msg.velocity))
+        return absoluteTrack
+
+    
+    def _convertRelative(self, absoluteTrack):
+        
+        return [absoluteTrack[i].convertToRelative(absoluteTrack[i+1].time - absoluteTrack[i].time) for i in range(len(absoluteTrack)-1)] + [absoluteTrack[-1].convertToRelative(0)]
+    
+
+
+
+
+    def _applyConstraints(self):
+        if(self.convertToC):
+            for note in self.track:
+                self._applyNoteRange(note)
+                self._convertToC(note)
+                self._timeConversion(note)
+        else:
+            for note in self.track:
+                self._applyNoteRange(note)
+                self._timeConversion(note)
+
+
+            
+
+
+    
+        
     #If timeMeasurement is durational 
     def _convertDurational(self):
         """
@@ -413,47 +450,20 @@ class OneTrack:
             octavesToShift = (((self.minNote - note.pitch)//12) + 1)
             note.transpose(12 * octavesToShift)
     
-    def _addChannel(self,lst):
-        self.channels.append(Channel(lst))
-
-    def _timeConversion(self, _time):
-        converted = _time*(1/self.tpb)/4/self.smallestTimeUnit
+    #converts ticks to number of time units
+    def _timeConversion(self, note):
+        converted = note.time*(1/self.tpb)/4/self.smallestTimeUnit
         if(converted>0 and converted<1):
-            return 1
-        return int(round(_time*(1/self.tpb)/4/self.smallestTimeUnit))
+            note.time = 1
+        note.time = round(converted)
+
 
     def _isNote(self,msg):
         return (type(msg) != MetaMessage and msg.type in ["note_on", "note_off"])
 
-    def _getArgMin(self, increasedTimes):
-        return nanargmin(increasedTimes)
-    
-    def _advanceChannel(self, ind):
-        self.channels[ind].advance()
 
 
 
-
-
-class Channel:
-    def __init__(self, lst):
-        self.data = lst
-        self.curInd = 0
-        self.curDt = lst[0].time
-        self.curTime = 0
-        self.len = len(self.data)
-
-    def __len__(self):
-        return self.len
-
-    def getNextIncreasedTime(self):
-        return self.curDt + self.curTime if self.curInd != len(self) - 1 else np.NaN
-
-    def advance(self):
-        self.curInd += 1
-        self.curTime += self.curDt
-        self.curDt = self.data[self.curInd].time
-        return self.data[self.curInd-1], self.curTime
 
 
 
@@ -474,21 +484,6 @@ class MidiAnalyzer:
         """
 
         self.midos = parseToMidos(findMidis(folder))
-
-
-
-
-
-    
-
-
-
-    
-    
-        
-
-        
-
 
 
 

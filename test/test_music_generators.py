@@ -4,6 +4,7 @@ from midi_parser.data_generators import DataGenOnOff, DataGenMultiNet, DataGenEm
 from midi_parser.music_generators import GeneratorOnOff, GeneratorMultiNet, GeneratorEmbeddedMultiNet
 from midi_parser.decimal_encoders import DecimalEncoderOnOff, DecimalEncoderMultiNet, DecimalEncoderMultiNet2
 from midi_parser.music_generators import sampleTop
+from midi_parser.midi_parser import MidiParser
 
 from keras.models import load_model
 
@@ -11,7 +12,7 @@ from keras.models import load_model
 lookback = 100
 nClassesTimes = 40
 smallestTimeUnit = 1/64
-noteRange = (36,84)
+noteRange = (46,84)
 nClassesNotes = 2*(noteRange[1] - noteRange[0] + 1)
 
 
@@ -91,26 +92,31 @@ model.save("test/test_data/models/test_model_multi_net2.h5")
 
 class TestMusicGeneratorOnOff(TestCase):
     
-    encoder = DecimalEncoderOnOff("test/test_data/midis", 1/64, nClassesTimes, noteRange= noteRange)
-    datagen = DataGenOnOff(encoder, lookback = lookback)
+    mp = MidiParser((46, 84), 1/64, True, "relative", "test/test_data/midis/Bwv768 Chorale and Variations", "DEBUG")
+    parsed = mp.parse()
+    encoder = DecimalEncoderOnOff(parsed)
+    encoded = encoder.encode()
+    datagen = DataGenOnOff(encoded, 32, 100, 5)
     model = load_model("test/test_data/models/test_model_on_off.h5")
 
 
     def test_init(self):
-        musicGen = GeneratorOnOff(TestMusicGeneratorOnOff.model, TestMusicGeneratorOnOff.datagen)
+        musicGen = GeneratorOnOff(TestMusicGeneratorOnOff.model, TestMusicGeneratorOnOff.datagen, smallestTimeUnit)
     
     
     def test_generate(self):
-        musicGen = GeneratorOnOff(TestMusicGeneratorOnOff.model, TestMusicGeneratorOnOff.datagen)
+        musicGen = GeneratorOnOff(TestMusicGeneratorOnOff.model, TestMusicGeneratorOnOff.datagen, smallestTimeUnit)
         musicGen.generate(1,100).play()
 
 
-
+"""
 encoderMultiNet = DecimalEncoderMultiNet("test/test_data/midis", 1/64, nClassesTimes, noteRange= noteRange)
 datagenMultiNet = DataGenMultiNet(encoderMultiNet, lookback = lookback)
 nClassesNotesMultiNet = 48+1+1
 nClassesTimesMultiNet = 40
 nClassesMultiNet = nClassesTimesMultiNet + nClassesNotesMultiNet 
+
+
 
 
 
@@ -131,7 +137,7 @@ class TestMusicGeneratorMultiNet(TestCase):
     def test_generate_top_probs(self):
         musicGen = GeneratorMultiNet(TestMusicGeneratorMultiNet.model, TestMusicGeneratorMultiNet.datagen)
         musicGen.generate(1,100, 3).play()
-
+"""
 
 
 '''
@@ -161,11 +167,16 @@ modelEmbed.compile(optimizer = 'rmsprop', loss = ['categorical_crossentropy','ca
 modelEmbed.fit(datagenEmbeddedMultiNet , epochs = 10)
 modelEmbed.save("test/test_data/models/test_model_embedded_multinet.h5")
 '''
+"""
 encoderMultiNet2 = DecimalEncoderMultiNet2("test/test_data/midis", 1/64, nClassesTimes, noteRange= noteRange)
 datagenEmbeddedMultiNet = DataGenEmbeddedMultiNet(encoderMultiNet2, lookback = lookback)
 nClassesNotesMultiNet = 48+1+1
 nClassesTimesMultiNet = 40
 modelEmbed = load_model("test/test_data/models/test_model_embedded_multinet.h5")
+
+
+
+
 class TestMusicGeneratorEmbeddedMultiNet(TestCase):
 
     def test_generate(self):
@@ -266,3 +277,4 @@ class DataEncoder:
             if(self.normalize):
                 arrUnEncoded = self.scaler.inverse_transform(arrUnEncoded)
             return arrUnEncoded = pd.DataFrame(arrUnEncoded, columns = np.concatenate([self.ordinalCols, self.oneHotCols]))
+"""

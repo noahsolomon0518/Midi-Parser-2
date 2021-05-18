@@ -15,10 +15,27 @@ N_POSSIBLE_NOTES = 150
 
 
 class Player:
+    """
+    Abstract class for piece
+    Has a function that converts to standard form:
+    0-47 = note_offs for notes that are <note+36>
+    48-95 = note_ons for notes that are <note+36>
+    96-<96+nClassesTimes> = Waiting times with units = <smallestTimeUnit> of a whole note
 
+
+    Parameters
+    ----------
+    piece: list(int)
+        A list representation of piece that is compatible with child class
+
+    smallestTimeUnit: float
+        smallest fraction of a whole beat that the piece is capable of capturing
+
+    """
 
     @staticmethod
     def play(piece, smallestTimeUnit = 1/32, tempo = 120):
+        
         timeUnitSeconds =  (smallestTimeUnit/(1/4))*(60/tempo)     #How many beats in smallest time unit
         fs = fluidsynth.Synth()
         fs.start()
@@ -35,23 +52,7 @@ class Player:
 
 
 
-"""
-Abstract class for piece
-Has a function that converts to standard form:
-0-47 = note_offs for notes that are <note+36>
-48-95 = note_ons for notes that are <note+36>
-96-<96+nClassesTimes> = Waiting times with units = <smallestTimeUnit> of a whole note
 
-
-Parameters
-----------
-piece: list(int)
-    A list representation of piece that is compatible with child class
-
-smallestTimeUnit: float
-    smallest fraction of a whole beat that the piece is capable of capturing
-
-"""
 
 #Abstract class for piece
 #Piece only records timing and notes

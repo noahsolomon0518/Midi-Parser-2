@@ -67,9 +67,9 @@ class Generator:
     
     """
     
-    def __init__(self, model, datagen):
+    def __init__(self, model, datagen, smallestTimeUnit):
 
-        self.smallestTimeUnit = datagen.decimalEncoder.smallestTimeUnit
+        self.smallestTimeUnit = smallestTimeUnit
         self.model = model
         self.datagen = datagen
         self.lookback = datagen.lookback
@@ -106,8 +106,8 @@ class Generator:
         
 
 class GeneratorOnOff(Generator):
-    def __init__(self, model, datagen):
-        super().__init__(model,datagen)
+    def __init__(self, model, datagen, smallestTimeUnit):
+        super().__init__(model,datagen, smallestTimeUnit)
     
     def _generate(self, temp, nNotes = 500, sampleTopProbs = 0):
         piece = []
