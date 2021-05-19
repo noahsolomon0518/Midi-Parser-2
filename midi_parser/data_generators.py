@@ -2,7 +2,7 @@
 
 
 from sklearn.preprocessing import OneHotEncoder, LabelEncoder
-from .decimal_encoders import DecimalEncoderMultiNet2, DecimalEncoderMultiNet, DecimalEncoderOnOff
+
 import keras
 import numpy as np
 from .pieces import MultiNetPiece
@@ -91,7 +91,7 @@ class DataGenOnOff(keras.utils.Sequence):
 
 class DataGenMultiNet(keras.utils.Sequence):
 
-    def __init__(self, decimalEncoder,  batchSize=32, lookback=50, gap = 5):
+    def __init__(self, encodedMidis,  batchSize=32, lookback=50, gap = 5):
 
         """
         Data generator for multi net encoder
@@ -110,20 +110,33 @@ class DataGenMultiNet(keras.utils.Sequence):
         gap: int
             At which interval samples will be picked out of piece
         """
-        _rangeNotes = np.arange(decimalEncoder.minNote, decimalEncoder.maxNote+1)
-        _rangeNotes = np.append(_rangeNotes,300)
-        _rangeTimes = np.arange(0,decimalEncoder.nClassesTimes)
-        self.ohe = OneHotEncoder(categories = [_rangeNotes, _rangeTimes], sparse = False)
-        self.decimalEncoder = decimalEncoder
-        self.encoded = decimalEncoder.encode()
+        self.encodedMidis = encodedMidis
         self.gap = gap
         self.lookback = lookback
         self.batchSize = batchSize
-        self.nClassesNotes = len(_rangeNotes)
-        self.nClassesTimes = decimalEncoder.nClassesTimes
-        self.indices = np.array([(pieceInd,noteInd) for pieceInd in range(len(self.encoded)) for noteInd in range(len(self.encoded[pieceInd][0]))  if noteInd%gap == 0 and (noteInd+1+self.lookback)< len(self.encoded[pieceInd][0])])
+        _range = self._calculateRange()
+        print(_range)
+        self.nClassesNotes = len(_range[0])
+        self.indices = self._getIndices()
+        self.ohe = OneHotEncoder(categories = _range, sparse = False)
+        self.indices = np.array([(pieceInd,noteInd) for pieceInd in range(len(self.encodedMidis)) for noteInd in range(len(self.encodedMidis[pieceInd]))  if noteInd%gap == 0 and (noteInd+1+self.lookback)< len(self.encodedMidis[pieceInd])])
         self._shuffleInds()
 
+
+    def _calculateRange(self):
+
+        pieceNotes = [list(np.array(piece)[:,0]) for piece in self.encodedMidis]
+        pieceTimes = [list(np.array(piece)[:,1]) for piece in self.encodedMidis]
+
+        rangeNotes = list(set(itertools.chain.from_iterable(pieceNotes)))
+        rangeNotes.sort()
+        rangeTimes = list(set(itertools.chain.from_iterable(pieceTimes)))
+        rangeTimes.sort()
+        return [rangeNotes, rangeTimes]
+
+    #Gets every possible sample. List of piece ind and starting ind in piece
+    def _getIndices(self):
+        return np.array([(pieceInd,noteInd) for pieceInd in range(len(self.encodedMidis)) for noteInd in range(len(self.encodedMidis[pieceInd]))  if noteInd%self.gap == 0 and (noteInd+1+self.lookback)< len(self.encodedMidis[pieceInd][0])])
 
 
 
@@ -137,7 +150,6 @@ class DataGenMultiNet(keras.utils.Sequence):
     def __getitem__(self, index):
         xIndices = self.indices[index*self.batchSize:(index+1)*self.batchSize]
         yIndices = np.array(list(map(lambda x: (x[0], x[1]+self.lookback),xIndices)))
-        
 
         xEncoded = np.array(list(map(lambda x: self._mapX(x), xIndices)))
         yEncoded = np.array(list(map(lambda y: self._mapY(y), yIndices)))
@@ -148,19 +160,15 @@ class DataGenMultiNet(keras.utils.Sequence):
     #Based on x starting indices returns sequence that will be one hot encoded
     #Returns list of [note, time]
     def _mapX(self, startInd):
-        notes = self.encoded[startInd[0]][0][startInd[1]:startInd[1]+self.lookback]
-        times = self.encoded[startInd[0]][1][startInd[1]:startInd[1]+self.lookback]
-        return list(zip(notes,times))
+        noteTimes = self.encodedMidis[startInd[0]][startInd[1]:startInd[1]+self.lookback]
+        return noteTimes
 
     def _mapY(self, yInd):
-        note = self.encoded[yInd[0]][0][yInd[1]]
-        time = self.encoded[yInd[0]][1][yInd[1]]
-        return (note, time)
+        return self.encodedMidis[yInd[0]][yInd[1]]
 
 
 
     def __data_generation(self, xEncoded, yEncoded):
-        # one hot encode sequences
         x = np.array([self.ohe.fit_transform(sample) for sample in xEncoded])
         y = self.ohe.fit_transform(yEncoded)
         yNotes = y[:,:self.nClassesNotes]

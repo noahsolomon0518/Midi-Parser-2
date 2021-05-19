@@ -1,17 +1,16 @@
 #Encodes all queued midis to list of integers
 
-from midi_parser.midi_parser import RelativeNote
+from midi_parser.midi_parser import RelativeNote, DurationalNote
 from mido import MidiFile
 from .one_tracks import *
 
 from os import walk
 from os import path
-import math
-import warnings
+
 
 
 class DecimalEncoder:
-    def __init__(self, parsedMidis, nClassesTimes):
+    def __init__(self, parsedMidis):
         """
         Abstract class for all implementations of decimal encoders
 
@@ -19,6 +18,7 @@ class DecimalEncoder:
         ----------
 
         """
+
         self.parsedMidis = parsedMidis
 
     def encode(self):
@@ -44,6 +44,7 @@ class DecimalEncoderOnOff(DecimalEncoder):
         except AssertionError:
             raise AssertionError("Parsed midis must have relative notes. Use timeMeasurement = \"relative\" in MidiParser init") 
         super().__init__(parsedMidis)
+        
     
 
     def _encodeOne(self, piece):
@@ -54,9 +55,11 @@ class DecimalEncoderOnOff(DecimalEncoder):
             else:
                 oneEncoded.append(note.pitch)
             if(note.time>0):
-                oneEncoded.append(299+note.time)
+                oneEncoded.append(299+note.time)     
         return self._order(oneEncoded)
     
+
+    #Orders between time units for consistency reasons
     def _order(self, oneEncoded):
         pointer = 0
         ordered = []
@@ -74,90 +77,44 @@ class DecimalEncoderOnOff(DecimalEncoder):
 
 
 
-
-
-
-
-
-
-
-        
-
-
-
-
-
 class DecimalEncoderMultiNet(DecimalEncoder):
-    def __init__(self, folder, smallestTimeUnit, nClassesTimes, noteRange = (36, 84) ,debug=False, r=True, convertToC = True,  scales = "both"):
+    def __init__(self, parsedMidis):
+        """
+        Note ons -> [<pitch>, <duration>]
+        """
+        try:
+            assert type(parsedMidis[0][0]) == DurationalNote
+        except AssertionError:
+            raise AssertionError("Parsed midis must have durational notes. Use timeMeasurement = \"durational\" in MidiParser init") 
         
-        super().__init__(
-            folder, 
-            smallestTimeUnit = smallestTimeUnit,
-            nClassesTimes = nClassesTimes,
-            noteRange = noteRange,
-            debug=debug, 
-            r=r, 
-            convertToC = convertToC,  
-            scales = scales)
+        super().__init__(parsedMidis)
+      
+
+
+    def _encodeOne(self, piece):
+        encoded = []
+        for i,note in enumerate(piece):
     
+            note = self._encodeEvent(note)
+            if(i>0 and note[0]==300 and encoded[-1][0]==300):
+                encoded[-1][1]+=note[1]
+                continue
 
-    #Uses vanilla OneTrack to encode
-    def _initOneTrack(self, mido):
-        return OneTrackOnOnly(
-            mido, 
-            convertToC = self.convertToC, 
-            noteRange = (self.minNote, self.maxNote),
-            scales = self.scales, 
-            smallestTimeUnit = self.smallestTimeUnit)
+            searchInd = 0
+            lastInd = len(encoded)-1
+            while(lastInd-searchInd>=0 and note[0] < encoded[lastInd-searchInd][0] and encoded[lastInd-searchInd][0]!=300):
+                searchInd += 1
+            if(lastInd-searchInd>=0 and note[0] == encoded[lastInd-searchInd][0]):
+                continue
+            encoded.insert(lastInd+1 - searchInd, note)
+                
 
-    def _initOTEncoder(self, oneTracks):
-        return OTEncoderMultiNet(oneTracks, nClassesTimes = self.nClassesTimes)
+        return encoded
 
-
-
-
-class DecimalEncoderMultiNet2(DecimalEncoder):
-    """
-    Slightly different implementation of multinet 1.
-    Orders notes within each timestep and deletes duplicates
-
-    Used with DataGenMultiNet and GeneratorMultiNet
-
-
-
-    """
-    def __init__(self, folder, smallestTimeUnit, nClassesTimes, noteRange = (36, 84) ,debug=False, r=True, convertToC = True,  scales = "both"):
-        
-        super().__init__(
-            folder, 
-            smallestTimeUnit = smallestTimeUnit,
-            nClassesTimes = nClassesTimes,
-            noteRange = noteRange,
-            debug=debug, 
-            r=r, 
-            convertToC = convertToC,  
-            scales = scales)
     
-
-    def _initOneTrack(self, mido):
-        return OneTrackOnOnlyOrdered(
-            mido, 
-            convertToC = self.convertToC, 
-            noteRange = (self.minNote, self.maxNote),
-            scales = self.scales, 
-            smallestTimeUnit = self.smallestTimeUnit)
-
-    def _initOTEncoder(self, oneTracks):
-        return OTEncoderMultiNet(oneTracks, nClassesTimes = self.nClassesTimes)
-
-
-
-
-
-
-
-
-
-
-
-
+    def _encodeEvent(self, evt):
+        if(evt.type == "time_unit"):
+            return [300, evt.time]
+        return [evt.pitch, evt.time]
+            
+            

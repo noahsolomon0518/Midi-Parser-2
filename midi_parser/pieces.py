@@ -168,19 +168,12 @@ class MultiNetPiece(Piece):
 
     
     def convertToOnOff(self, piece):
-        piece = self._convertToOnOnly(piece)
+
         totalTimeUnits = sum([piece[i+1] for i in range(len(piece)) if i%2 == 0 and piece[i]==Piece.TIME_UNIT_START])+100
         notesByTimeUnit = self._calcNoteOnNoteOffs(piece, totalTimeUnits)
         convertedPiece = self._collapseTimeUnits(notesByTimeUnit)
         return convertedPiece
 
-
-    def _convertToOnOnly(self, piece):
-        onOnlyConverted = []
-
-        for note,time in zip(piece[0], piece[1]):
-            onOnlyConverted.extend([note,time])
-        return onOnlyConverted
 
     
 

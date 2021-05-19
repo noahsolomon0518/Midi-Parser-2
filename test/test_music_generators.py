@@ -10,21 +10,22 @@ from keras.models import load_model
 
 
 lookback = 100
-nClassesTimes = 40
-smallestTimeUnit = 1/64
-noteRange = (46,84)
-nClassesNotes = 2*(noteRange[1] - noteRange[0] + 1)
+nClasses = 90
 
-
-'''
 ### For OnOff
 from keras.models import Sequential
 from keras.layers import Dense, LSTM
-encoder = DecimalEncoderOnOff("test/test_data/midis", 1/64, nClassesTimes, noteRange= noteRange)
-datagen = DataGenOnOff(encoder, lookback = lookback)
+
+'''
+smallestTimeUnit = 1/64
+mp = MidiParser((46, 84), 1/64, True, "relative", "test/test_data/midis/Bwv768 Chorale and Variations", "DEBUG")
+parsed = mp.parse()
+encoder = DecimalEncoderOnOff(parsed)
+encoded = encoder.encode()
+datagen = DataGenOnOff(encoded, lookback = lookback)
 model = Sequential()
-model.add(LSTM(64, input_shape = (lookback, nClassesNotes + nClassesTimes)))
-model.add(Dense(nClassesTimes+nClassesNotes ,activation = 'softmax'))
+model.add(LSTM(64, input_shape = (lookback, nClasses)))
+model.add(Dense(nClasses, activation = 'softmax'))
 model.compile(optimizer = 'rmsprop', loss = 'categorical_crossentropy', metrics = ['accuracy'])
 model.fit(datagen, epochs = 40)
 model.save("test/test_data/models/test_model_on_off.h5")
@@ -91,7 +92,7 @@ model.save("test/test_data/models/test_model_multi_net2.h5")
 
 
 class TestMusicGeneratorOnOff(TestCase):
-    
+    smallestTimeUnit = 1/64
     mp = MidiParser((46, 84), 1/64, True, "relative", "test/test_data/midis/Bwv768 Chorale and Variations", "DEBUG")
     parsed = mp.parse()
     encoder = DecimalEncoderOnOff(parsed)

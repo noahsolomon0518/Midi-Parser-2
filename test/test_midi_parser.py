@@ -35,7 +35,8 @@ class TestMidiParser(TestCase):
         mp = MidiParser((46,84), 1/32, True, "durational", folder = "test/test_data/midis", debugLevel = "DEBUG")
         parsed = mp.parse()
         self.assertGreater(len(parsed),0)
-        
+        for note in parsed[0]:
+            print(note)
     def test_serialize(self):
         mp = MidiParser((46,84), 1/32, True, "relative", folder = "test/test_data/midis", debugLevel = "DEBUG")
         mp.serialize("test/test_data/serialized_relative")

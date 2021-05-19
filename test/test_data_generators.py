@@ -3,12 +3,13 @@ from unittest import TestCase
 
 from midi_parser.pieces import OnOffPiece, MultiNetPiece
 from midi_parser.data_generators import DataGenOnOff, DataGenMultiNet, DataGenEmbeddedMultiNet
-from midi_parser.decimal_encoders import DecimalEncoderOnOff, DecimalEncoderMultiNet, DecimalEncoderMultiNet2
+from midi_parser.decimal_encoders import DecimalEncoderOnOff, DecimalEncoderMultiNet
 
 relativeParsed = MidiParser.deSerialize("test/test_data/serialized_relative")
 relativeParsed = MidiParser((46,84), 1/128, True, "relative", "test/test_data/midis").parse()
 encoded = DecimalEncoderOnOff(relativeParsed).encode()
-
+durParsed = MidiParser((46,84), 1/128, True, "durational", "test/test_data/midis").parse()
+encodedMultiNet = DecimalEncoderMultiNet(durParsed).encode()
 
 
 class TestDataGeneratorOnOff(TestCase):
@@ -38,44 +39,27 @@ class TestDataGeneratorOnOff(TestCase):
 
 class TestDataGeneratorMultiNet(TestCase):
     
-
     def test_init(self):
-        datagen = DataGenMultiNet(encoderMultiNet,50)
+        datagen = DataGenMultiNet(encodedMultiNet,50)
         
 
     def test_get_data(self):
-        datagen = DataGenMultiNet(encoderMultiNet, 10,  lookback=50)
-        x, [yNotes, yTimes] = datagen.__getitem__(0)
-        print(x.shape)
-        print(yNotes.shape)
-        print(yTimes.shape)
+        datagen = DataGenMultiNet(encodedMultiNet, 10,  lookback=50)
+        data = datagen.__getitem__(0)
 
-    def test_play_samples(self):
-        datagen = DataGenMultiNet(encoderMultiNet, 10,  lookback=50)
-        for i in range(5):
-            x, [yNotes, yTimes] = datagen.__getitem__(i)
-            pieceNotes = datagen.ohe.inverse_transform(x[0])[:, 0]
-            pieceTimes = datagen.ohe.inverse_transform(x[0])[:, 1]
-            piece = MultiNetPiece([pieceNotes,pieceTimes], 1/64)
-            piece.play()
+    def test_play_sample(self):
+        mp = MidiParser((46, 84), 1/64, True, "durational", "test/test_data/midis/Bwv768 Chorale and Variations", "DEBUG")
+        parsed = mp.parse()
+        encoder = DecimalEncoderMultiNet(parsed)
+        encoded = encoder.encode()
+        datagen = DataGenMultiNet(encoded, 32, 100, 5)
+        data = datagen.__getitem__(5)
+        piece = MultiNetPiece(datagen.ohe.inverse_transform(data[0][0]).reshape(-1).tolist(), 1/64)
+        piece.play()
 
 
 
 
-
-class TestDataGeneratorMultiNet2(TestCase):
-    
-
-    def test_init(self):
-        datagen = DataGenMultiNet(decimalEncoder = encoderMultiNet2,lookback = 50)
-        
-
-    def test_get_data(self):
-        datagen = DataGenMultiNet(decimalEncoder = encoderMultiNet2, batchSize = 10,  lookback=50)
-        x, [yNotes, yTimes] = datagen[0]
-        print(x.shape)
-        print(yNotes.shape)
-        print(yTimes.shape)
 
 
 

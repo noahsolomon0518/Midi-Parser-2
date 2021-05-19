@@ -1,7 +1,9 @@
 from midi_parser.midi_parser import MidiParser
 from unittest import TestCase
 import unittest
-from midi_parser.decimal_encoders import DecimalEncoderOnOff, DecimalEncoderMultiNet, DecimalEncoderMultiNet2
+from midi_parser.decimal_encoders import DecimalEncoderOnOff, DecimalEncoderMultiNet
+import itertools
+from midi_parser.pieces import MultiNetPiece
 
 class TestDecimalEncoderOnOff(TestCase):
 
@@ -25,42 +27,28 @@ class TestDecimalEncoderOnOff(TestCase):
 
     
 
+import numpy as np
 
-
-class TestOTEncoderMultiNet(TestCase):
-
-    
-    def test_init(self):
-        encoder = DecimalEncoderMultiNet("test/test_data/midis", 1/32, 30)
-        data = encoder.encode()
-    
-
-    def test_encoder(self):
-        encoder = DecimalEncoderMultiNet("test/test_data/midis", 1/32, 30)
-        data = encoder.encode()
-        print(data)
-        for piece in data:
-            self.assertEqual(len(piece), 2)
-            self.assertGreater(len(piece[0]), 0)
-            self.assertGreater(len(piece[1]), 0)
-
-
-
-
-
-class TestOTEncoderMultiNet2(TestCase):
+class TestDecimalEncoderMultiNet(TestCase):
 
     
     def test_init(self):
-        encoder = DecimalEncoderMultiNet2("test/test_data/midis", 1/32, 30)
-        data = encoder.encode()
+        parsedMidis = MidiParser.deSerialize("test/test_data/serialized_durational")
+        encoder = DecimalEncoderMultiNet(parsedMidis)
     
 
     def test_encoder(self):
-        encoder = DecimalEncoderMultiNet2("test/test_data/midis", 1/32, 30)
-        data = encoder.encode()
-        #print(data)
-        for piece in data:
-            self.assertEqual(len(piece), 2)
-            self.assertGreater(len(piece[0]), 0)
-            self.assertGreater(len(piece[1]), 0)
+        parsedMidis = MidiParser.deSerialize("test/test_data/serialized_durational")
+        encoder = DecimalEncoderMultiNet(parsedMidis)
+        print(encoder.encode()[0])
+
+
+    def test_play(self):
+        parsedMidis = MidiParser.deSerialize("test/test_data/serialized_durational")
+        encoder = DecimalEncoderMultiNet(parsedMidis)
+        piece = list(itertools.chain.from_iterable(encoder.encode()[0]))
+        piece = MultiNetPiece(piece, 1/64)
+        piece.play()
+        
+
+

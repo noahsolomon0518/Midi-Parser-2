@@ -168,6 +168,7 @@ class MidiParser:
 
 
 
+
 #Time is assumed to be measured in ticks. A function can convert to seconds and time units depending on tpb
 class Note:
 
@@ -429,7 +430,8 @@ class OneTrack:
                         dt+=nextNote.time 
                         break
                     dt+=nextNote.time 
-                notesTimed.append(note.convertToDurational(dt))
+                if(dt>0):
+                    notesTimed.append(note.convertToDurational(dt))
         self.track = notesTimed
 
 
@@ -440,15 +442,17 @@ class OneTrack:
         return True
 
     def _convertToC(self, note):
-        note.transpose(self.halfStepsBelowC if self.halfStepsBelowC<=6 else self.halfStepsBelowC - 12)
+        if(note.type!="time_unit"):
+            note.transpose(self.halfStepsBelowC if self.halfStepsBelowC<=6 else self.halfStepsBelowC - 12)
         
     def _applyNoteRange(self, note):
-        if(note.pitch>self.maxNote):
-            octavesToShift = (((note.pitch-self.maxNote)//12) + 1)
-            note.trasnpose(-12 * octavesToShift)
-        elif(note.pitch<self.minNote):
-            octavesToShift = (((self.minNote - note.pitch)//12) + 1)
-            note.transpose(12 * octavesToShift)
+        if(note.type!="time_unit"):
+            if(note.pitch>self.maxNote):
+                octavesToShift = (((note.pitch-self.maxNote)//12) + 1)
+                note.trasnpose(-12 * octavesToShift)
+            elif(note.pitch<self.minNote):
+                octavesToShift = (((self.minNote - note.pitch)//12) + 1)
+                note.transpose(12 * octavesToShift)
     
     #converts ticks to number of time units
     def _timeConversion(self, note):
