@@ -9,181 +9,136 @@ from .pieces import MultiNetPiece
 import itertools
 
 
-#Takes one hot encoded vectors and converts them to their respective integers. Good for testing
-def encodeFromOneHot(generated):
-    piece = []
-    for note in generated:
-        piece.append(np.argmax(note))
-    return piece
 
 
-
-class DataGenOnOff(keras.utils.Sequence):
-
-    def __init__(self, encodedMidis,  batchSize=32, lookback=50, gap = 5):
+class DataGen(keras.utils.Sequence):
+    def __init__(self, encodedMidis, batchSize, lookback, gap):
         """
-        Data generator for on off encoder
+        Abstraction for data generators
 
         Parameters
         ----------
-        decimalEncoder: DecimalEncoderOnOff
-            Decimal encoder that is used to extract midis and encode them to integers
-        
+        encodedMidis: list[list]
+            List of encoded pieces
+        noteRange: list
+            List of all the possible notes
+        timeRange: list
+            List of all the possible times
         batchSize: int
-            Size of each batch in an epoch
-
+            Number of samples that will be evaluated before neural network adjusts weights
         lookback: int
-            How many steps before current step training data has access to
-
+            Number of previous notes that the network has before it makes a predictions
         gap: int
-            At which interval samples will be picked out of piece
+            Interval at which new samples are generated in a piece
         """
         self.encodedMidis = encodedMidis
-        _range = self._calculateRange()
-        print(_range)
-        self.ohe = OneHotEncoder(categories = [_range], sparse = False)
-        self.gap = gap
-        self.lookback = lookback
         self.batchSize = batchSize
-        self.indices = np.array([(pieceInd,noteInd) for pieceInd in range(len(encodedMidis)) for noteInd in range(len(self.encodedMidis[pieceInd]))  if noteInd%gap == 0 and (noteInd+1)< len(self.encodedMidis[pieceInd])-self.lookback])
+        self.lookback = lookback
+        self.eventRange = self._calculateRange()
+        self.gap = gap
+        self.indices = self._getIndices()
         self._shuffleInds()
 
 
-
-    #Returns all possible values that OneHotEncoder might take in    
-    def _calculateRange(self):
-        return list(set(itertools.chain.from_iterable([piece for piece in self.encodedMidis])))
-
-    #Calculates how many batches to cycle through all data
-    def __len__(self):
-        distinctSamples = len(self.indices)
-        return distinctSamples//self.batchSize
-
-
-    #Annoyingly complicated way to get samples
     def __getitem__(self, index):
+        xIndices, yIndices = self._getXYIndexStarts(index)
+        xEncodedSamples, yEncodedSamples = self._getXYEncodedSamples(xIndices,yIndices)
+        return self._oneHotEncodeBatch(xEncodedSamples, yEncodedSamples)
+
+
+    def _oneHotEncodeBatch(self, xEncodedSamples, yEncodedSamples):
+        raise NotImplementedError("Must include _oneHotEncodeBatch() function")
+
+    def _calculateRange(self):
+        _range = []
+        nFeatures = len(self.encodedMidis[0][0]) if type(self.encodedMidis[0][0]) == list else 1
+        if(nFeatures>1):
+            for i in range(nFeatures):
+                eventsPerPiece = [list(np.array(piece)[:,i]) for piece in self.encodedMidis]
+                rangeEvents= list(set(itertools.chain.from_iterable(eventsPerPiece)))
+                rangeEvents.sort()
+                _range.append(rangeEvents)
+        else:
+            rangeEvents = list(set(itertools.chain.from_iterable(self.encodedMidis)))
+            rangeEvents.sort()
+            _range.append(rangeEvents)
+        return _range
+
+    #Gets x and y indices starting point in form of (<piece Ind>, <sample Ind>) based on batchsize
+    def _getXYIndexStarts(self, index):
         xIndices = self.indices[index*self.batchSize:(index+1)*self.batchSize]
-        yIndices = np.array(list(map(lambda x: (x[0], x[1]+self.lookback),xIndices)))
-        xEncoded = np.array(list(map(lambda x: self.encodedMidis[x[0]][x[1]:x[1]+self.lookback], xIndices)))
-        yEncoded = np.array(list(map(lambda y: self.encodedMidis[y[0]][y[1]], yIndices)))
-        X, y = self.__data_generation(xEncoded, yEncoded)
+        yIndices = [(xInd[0], xInd[1]+self.lookback) for xInd in xIndices]
+        return xIndices,yIndices
 
-        return X, y
+    def _getXYEncodedSamples(self, xIndices, yIndices):
+        xEncodedSamples = [np.array(self.encodedMidis[xStartInd[0]])[xStartInd[1]:xStartInd[1]+self.lookback] for xStartInd in np.array(xIndices)]
+        yEncodedSamples = [self.encodedMidis[yInd[0]][yInd[1]] for yInd in np.array(yIndices)]
+        return np.stack(xEncodedSamples), np.stack(yEncodedSamples)
 
+    #Grabs every possible sample starting place as list of (<piece ind>, <sample ind>)
+    def _getIndices(self):
+        indicesByPiece = [self._getIndicesByPiece(piece) for piece in self.encodedMidis]
+        indicesByPieceAndSample = [self._getIndicesByPieceAndSample(indicesByPiece[i], i) for i in range(len(indicesByPiece))]
+        return list(itertools.chain.from_iterable(indicesByPieceAndSample))
 
-
-    def __data_generation(self, xEncoded, yEncoded):
-        # one hot encode sequences
-
-        x = np.array([self.ohe.fit_transform(sample.reshape(-1,1)) for sample in xEncoded])
-        y = self.ohe.fit_transform(yEncoded.reshape(-1,1))
-        return (x, y)
-
-
-
+    #Grabs every sample ind in a single piece
+    def _getIndicesByPiece(self, piece):
+        pieceLength = len(piece)
+        return [i for i in range(pieceLength) if i%self.gap == 0 and (i+1)< pieceLength-self.lookback]
+    
+    def _getIndicesByPieceAndSample(self, indices, pieceInd):
+        return [(pieceInd, i) for i in indices]
 
     def _shuffleInds(self):
         np.random.shuffle(self.indices)
 
-
     def on_epoch_end(self):
         self._shuffleInds()
 
-class DataGenMultiNet(keras.utils.Sequence):
-
-    def __init__(self, encodedMidis,  batchSize=32, lookback=50, gap = 5):
-
-        """
-        Data generator for multi net encoder
-
-        Parameters
-        ----------
-        decimalEncoder: DecimalEncoderMultiNet
-            Decimal encoder that is used to extract midis and encode them to integers
-        
-        batchSize: int
-            Size of each batch in an epoch
-
-        lookback: int
-            How many steps before current step training data has access to
-
-        gap: int
-            At which interval samples will be picked out of piece
-        """
-        self.encodedMidis = encodedMidis
-        self.gap = gap
-        self.lookback = lookback
-        self.batchSize = batchSize
-        _range = self._calculateRange()
-        print(_range)
-        self.nClassesNotes = len(_range[0])
-        self.indices = self._getIndices()
-        self.ohe = OneHotEncoder(categories = _range, sparse = False)
-        self.indices = np.array([(pieceInd,noteInd) for pieceInd in range(len(self.encodedMidis)) for noteInd in range(len(self.encodedMidis[pieceInd]))  if noteInd%gap == 0 and (noteInd+1+self.lookback)< len(self.encodedMidis[pieceInd])])
-        self._shuffleInds()
-
-
-    def _calculateRange(self):
-
-        pieceNotes = [list(np.array(piece)[:,0]) for piece in self.encodedMidis]
-        pieceTimes = [list(np.array(piece)[:,1]) for piece in self.encodedMidis]
-
-        rangeNotes = list(set(itertools.chain.from_iterable(pieceNotes)))
-        rangeNotes.sort()
-        rangeTimes = list(set(itertools.chain.from_iterable(pieceTimes)))
-        rangeTimes.sort()
-        return [rangeNotes, rangeTimes]
-
-    #Gets every possible sample. List of piece ind and starting ind in piece
-    def _getIndices(self):
-        return np.array([(pieceInd,noteInd) for pieceInd in range(len(self.encodedMidis)) for noteInd in range(len(self.encodedMidis[pieceInd]))  if noteInd%self.gap == 0 and (noteInd+1+self.lookback)< len(self.encodedMidis[pieceInd][0])])
-
-
-
-    #Calculates how many batches to cycle through all data
     def __len__(self):
         distinctSamples = len(self.indices)
         return distinctSamples//self.batchSize
 
 
-    #Annoyingly complicated way to get samples
-    def __getitem__(self, index):
-        xIndices = self.indices[index*self.batchSize:(index+1)*self.batchSize]
-        yIndices = np.array(list(map(lambda x: (x[0], x[1]+self.lookback),xIndices)))
 
-        xEncoded = np.array(list(map(lambda x: self._mapX(x), xIndices)))
-        yEncoded = np.array(list(map(lambda y: self._mapY(y), yIndices)))
-        X, yNotes, yTimes = self.__data_generation(xEncoded, yEncoded)
-   
-        return X, [yNotes, yTimes]
 
-    #Based on x starting indices returns sequence that will be one hot encoded
-    #Returns list of [note, time]
-    def _mapX(self, startInd):
-        noteTimes = self.encodedMidis[startInd[0]][startInd[1]:startInd[1]+self.lookback]
-        return noteTimes
+class DataGenOnOff(DataGen):
 
-    def _mapY(self, yInd):
-        return self.encodedMidis[yInd[0]][yInd[1]]
+    def __init__(self, encodedMidis,  batchSize, lookback, gap):
+        super().__init__(encodedMidis, batchSize=batchSize, lookback=lookback, gap=gap)
+        self.ohe = OneHotEncoder(categories=self.eventRange, sparse=False)
+        
+
+    def _oneHotEncodeBatch(self, xEncodedSamples, yEncodedSamples):
+        xSamples = np.array([self.ohe.fit_transform(sample.reshape(-1,1)) for sample in xEncodedSamples])
+        ySamples = self.ohe.fit_transform(yEncodedSamples.reshape(-1,1))
+        return xSamples, ySamples
+        
 
 
 
-    def __data_generation(self, xEncoded, yEncoded):
-        x = np.array([self.ohe.fit_transform(sample) for sample in xEncoded])
-        y = self.ohe.fit_transform(yEncoded)
+
+
+
+
+class DataGenMultiNet(DataGen):
+
+    def __init__(self, encodedMidis,  batchSize, lookback, gap):
+        super().__init__(encodedMidis, batchSize=batchSize, lookback=lookback, gap=gap)
+        self.ohe = OneHotEncoder(categories=self.eventRange, sparse=False)
+
+        self.nClassesNotes = len(self.eventRange[0])
+        self.nClassesTimes = len(self.eventRange[1])
+
+    def _oneHotEncodeBatch(self, xEncodedSamples, yEncodedSamples):
+        xSamples = np.array([self.ohe.fit_transform(sample) for sample in xEncodedSamples])
+        y = self.ohe.fit_transform(yEncodedSamples)
         yNotes = y[:,:self.nClassesNotes]
         yTimes = y[:,self.nClassesNotes:]
-        return (x, yNotes, yTimes)
+        return xSamples, [yNotes,yTimes]
 
 
 
-
-    def _shuffleInds(self):
-        np.random.shuffle(self.indices)
-
-
-    def on_epoch_end(self):
-        self._shuffleInds()
 
 
 class DataGenEmbeddedMultiNet(DataGenMultiNet):

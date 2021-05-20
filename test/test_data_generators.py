@@ -1,8 +1,8 @@
 from midi_parser.midi_parser import MidiParser
 from unittest import TestCase
-
+import numpy
 from midi_parser.pieces import OnOffPiece, MultiNetPiece
-from midi_parser.data_generators import DataGenOnOff, DataGenMultiNet, DataGenEmbeddedMultiNet
+from midi_parser.data_generators import DataGenOnOff, DataGenMultiNet, DataGenEmbeddedMultiNet, DataGen
 from midi_parser.decimal_encoders import DecimalEncoderOnOff, DecimalEncoderMultiNet
 
 relativeParsed = MidiParser.deSerialize("test/test_data/serialized_relative")
@@ -12,15 +12,21 @@ durParsed = MidiParser((46,84), 1/128, True, "durational", "test/test_data/midis
 encodedMultiNet = DecimalEncoderMultiNet(durParsed).encode()
 
 
+class TestDataGen(TestCase):
+
+    def test_init(self):
+        datagen = DataGen(encoded, 32, 100, 5)
+        #datagen.__getitem__(0)
+
 class TestDataGeneratorOnOff(TestCase):
     
 
     def test_init(self):
-        datagen = DataGenOnOff(encoded,50)
+        datagen = DataGenOnOff(encoded,32, 100, 5)
         
 
     def test_get_data(self):
-        datagen = DataGenOnOff(encoded, 10,  lookback=50)
+        datagen = DataGenOnOff(encoded, 32, 100, 5)
         data = datagen.__getitem__(0)
         print(data)
 
@@ -31,30 +37,29 @@ class TestDataGeneratorOnOff(TestCase):
         encoded = encoder.encode()
         datagen = DataGenOnOff(encoded, 32, 100, 5)
         data = datagen.__getitem__(5)
-        print(encoded[0])
         piece = OnOffPiece(datagen.ohe.inverse_transform(data[0][0]).reshape(-1).tolist(), 1/64)
         piece.play()
 
 
-
+import itertools
 class TestDataGeneratorMultiNet(TestCase):
     
     def test_init(self):
-        datagen = DataGenMultiNet(encodedMultiNet,50)
+        datagen = DataGenMultiNet(encodedMultiNet, 32, 100, 5)
         
 
     def test_get_data(self):
-        datagen = DataGenMultiNet(encodedMultiNet, 10,  lookback=50)
+        datagen = DataGenMultiNet(encodedMultiNet, 32, 100, 5)
         data = datagen.__getitem__(0)
 
     def test_play_sample(self):
-        mp = MidiParser((46, 84), 1/64, True, "durational", "test/test_data/midis/Bwv768 Chorale and Variations", "DEBUG")
+        mp = MidiParser((46, 84), 1/32, True, "durational", "test/test_data/midis/Bwv768 Chorale and Variations", "DEBUG")
         parsed = mp.parse()
         encoder = DecimalEncoderMultiNet(parsed)
-        encoded = encoder.encode()
+        encoded = encoder.encode()[:2]
         datagen = DataGenMultiNet(encoded, 32, 100, 5)
-        data = datagen.__getitem__(5)
-        piece = MultiNetPiece(datagen.ohe.inverse_transform(data[0][0]).reshape(-1).tolist(), 1/64)
+        data = datagen.__getitem__(0)
+        piece = MultiNetPiece(datagen.ohe.inverse_transform(data[0][0]), 1/32)
         piece.play()
 
 

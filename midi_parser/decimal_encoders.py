@@ -50,12 +50,12 @@ class DecimalEncoderOnOff(DecimalEncoder):
     def _encodeOne(self, piece):
         oneEncoded = []
         for note in piece:
+            if(note.time>0):
+                oneEncoded.append(299+note.time)     
             if(note.type == "note_on"):
                 oneEncoded.append(150+note.pitch)
             else:
                 oneEncoded.append(note.pitch)
-            if(note.time>0):
-                oneEncoded.append(299+note.time)     
         return self._order(oneEncoded)
     
 

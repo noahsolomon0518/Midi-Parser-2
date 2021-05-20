@@ -390,7 +390,7 @@ class OneTrack:
     
     def _convertRelative(self, absoluteTrack):
         
-        return [absoluteTrack[i].convertToRelative(absoluteTrack[i+1].time - absoluteTrack[i].time) for i in range(len(absoluteTrack)-1)] + [absoluteTrack[-1].convertToRelative(0)]
+        return [absoluteTrack[0].convertToRelative(0)] + [absoluteTrack[i].convertToRelative(absoluteTrack[i].time - absoluteTrack[i-1].time) for i in range(len(absoluteTrack)) if i >0]
     
 
 

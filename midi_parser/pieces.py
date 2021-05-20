@@ -152,7 +152,7 @@ class OnOffPiece(Piece):
 
 
 
-
+import itertools
 
 
 class MultiNetPiece(Piece):
@@ -168,7 +168,7 @@ class MultiNetPiece(Piece):
 
     
     def convertToOnOff(self, piece):
-
+        piece = list(itertools.chain.from_iterable(piece))
         totalTimeUnits = sum([piece[i+1] for i in range(len(piece)) if i%2 == 0 and piece[i]==Piece.TIME_UNIT_START])+100
         notesByTimeUnit = self._calcNoteOnNoteOffs(piece, totalTimeUnits)
         convertedPiece = self._collapseTimeUnits(notesByTimeUnit)
