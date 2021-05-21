@@ -137,11 +137,11 @@ class GeneratorOnOff(Generator):
 
 
 class GeneratorMultiNet(Generator):
-    def __init__(self, model, datagen):
-        super().__init__(model,datagen)
+    def __init__(self, model, datagen, smallestTimeUnit):
+        super().__init__(model,datagen, smallestTimeUnit)
 
     def _generate(self, temp, nNotes, sampleTopProbs):
-        piece = [[],[]]
+        piece = []
         choiceInd = np.random.randint(0,self.datagen.batchSize)
         generated = self.datagen.__getitem__(0)[0][choiceInd]
 
@@ -155,9 +155,9 @@ class GeneratorMultiNet(Generator):
             else:
                 argmaxNotes = sample(predNotes[0], temp)
                 argmaxTimes = sample(predTimes[0], temp)
-                
-            piece[0].append(self.datagen.ohe.categories_[0][argmaxNotes])
-            piece[1].append(self.datagen.ohe.categories_[1][argmaxTimes])
+            note = self.datagen.ohe.categories_[0][argmaxNotes]
+            time = self.datagen.ohe.categories_[1][argmaxTimes]
+            piece.append([note,time])
             preds = np.concatenate([predNotes, predTimes], axis = 1)
             generated = np.concatenate([generated,preds])
         piece = self._convertToPieceObj(piece)
