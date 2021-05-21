@@ -25,7 +25,7 @@ class TestMidiParser(TestCase):
 
 
     def test_parse_relative(self):
-        mp = MidiParser((46,84), 1/32, True, "relative", folder = "test/test_data/midis", debugLevel = "DEBUG")
+        mp = MidiParser((46,84), 1/32, True, "relative", mode = "major", folder = "test/test_data/midis", debugLevel = "DEBUG")
         parsed = mp.parse()
         self.assertGreater(len(parsed),0)
 
@@ -67,7 +67,7 @@ class TestOneTrack(TestCase):
         
     def test_play(self):
         
-        stu = 1/64
+        stu = 1/128
         timeUnitSeconds = 2*stu
         mf = MidiFile("test/test_data/midis/Bwv768 Chorale and Variations/what/bsgjg_e.mid")
         ot = OneTrack(mf,  (22,96), stu, True, "relative")

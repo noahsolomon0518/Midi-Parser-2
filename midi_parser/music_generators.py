@@ -170,29 +170,62 @@ class GeneratorMultiNet(Generator):
 
 
 class GeneratorEmbeddedMultiNet(Generator):
-    def __init__(self, model, datagen):
-        super().__init__(model,datagen)
+    def __init__(self, model, datagen, smallestTimeUnit):
+        super().__init__(model,datagen, smallestTimeUnit)
+
 
     def _generate(self, temp, nNotes, sampleTopProbs):
-        piece = [[],[]]
+        piece = []
         choiceInd = np.random.randint(0,self.datagen.batchSize)
-        notes = self.datagen.__getitem__(0)[0][0][choiceInd]
-        times = self.datagen.__getitem__(0)[0][1][choiceInd]
-        generated = np.array([notes,times])
+        print(self.datagen[0][0][0][choiceInd])
+        notes = self.datagen[0][0][0][choiceInd]
+        times = self.datagen[0][0][1][choiceInd]
+        generated = [list(notes), list(times)]
         for i in range(nNotes):
             priorNotes = self._getPriorNotes(generated[0])
-            priorTimes = self._getPriorNotes(generated[1])
+            priorTimes = self._getPriorNotes(generated[1])  
             predNotes, predTimes = self.model.predict([priorNotes, priorTimes])
             if sampleTop:
-                argmaxNotes = sampleTop(predNotes, n = sampleTopProbs, temperature= temp)     #I foolishly designed the function thinking it was 2d array
-                argmaxTimes = sampleTop(predTimes, n = sampleTopProbs, temperature= temp)     #I foolishly designed the function thinking it was 2d array
+                argmaxNotes = sampleTop(predNotes, n = sampleTopProbs, temperature= temp)    
+                argmaxTimes = sampleTop(predTimes, n = sampleTopProbs, temperature= temp)    
 
             else:
                 argmaxNotes = sample(predNotes[0], temp)
                 argmaxTimes = sample(predTimes[0], temp)
-                
-            piece[0].append(self.datagen.noteEnc.inverse_transform([argmaxNotes])[0])
-            piece[1].append(self.datagen.timeEnc.inverse_transform([argmaxTimes])[0])
+            note = self.datagen.ohe.categories_[0][argmaxNotes]
+            time = self.datagen.ohe.categories_[1][argmaxTimes]
+            piece.append((note, time))
+            encodedNoteTime = self.datagen.ordEnc.fit_transform([(note,time)])[0]
+            generated[0].append(encodedNoteTime[0])
+            generated[1].append(encodedNoteTime[1])
+        piece = self._convertToPieceObj(piece)
+        return piece
+
+    def _convertToPieceObj(self, piece):
+        return MultiNetPiece(piece, self.smallestTimeUnit)
+
+
+            
+    def _generate2(self, temp, nNotes, sampleTopProbs): 
+        piece = []
+        choiceInd = np.random.randint(0,self.datagen.batchSize)
+        notes = self.datagen[0][0][choiceInd]
+        times = self.datagen[0][1][choiceInd]
+        generated = np.stack([self.datagen.ordEnc.inverse_transform([(notes[i], times[i])]) for i in range(len(notes))]).reshape(-1,2)
+        for i in range(nNotes):
+            priorNotes = self._getPriorNotes(generated)
+            priorTimes = self._getPriorNotes(generated)
+            predNotes, predTimes = self.model.predict([priorNotes, priorTimes])
+            if sampleTop:
+                argmaxNotes = sampleTop(predNotes, n = sampleTopProbs, temperature= temp)    
+                argmaxTimes = sampleTop(predTimes, n = sampleTopProbs, temperature= temp)    
+
+            else:
+                argmaxNotes = sample(predNotes[0], temp)
+                argmaxTimes = sample(predTimes[0], temp)
+            
+            note = self.datagen.ohe.categories_[0][argmaxNotes]
+            time = self.datagen.ohe.categories_[1][argmaxTimes]
             generated = np.concatenate([generated,[[argmaxNotes], [argmaxTimes]]], axis = 1)
         print(piece)
         piece = self._convertToPieceObj(piece)

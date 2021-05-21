@@ -68,23 +68,30 @@ class TestDataGeneratorMultiNet(TestCase):
 
 
 
-
+import numpy as np
 class TestDataGenEmbeddedMultiNet(TestCase):
     
 
     def test_init(self):
-        datagen = DataGenEmbeddedMultiNet(decimalEncoder= encoderMultiNet2, lookback = 50)
+        datagen = DataGenEmbeddedMultiNet(encodedMultiNet, 32, 100, 5)
         
 
     def test_get_data(self):
-        datagen = DataGenEmbeddedMultiNet(decimalEncoder= encoderMultiNet2, batchSize = 30,  lookback=50)
+        datagen = DataGenEmbeddedMultiNet(encodedMultiNet, 32, 100, 5)
         [xNotes, xTimes], [yNotes, yTimes] = datagen[0]
         
-    def test_lengths(self):
-        datagen = DataGenEmbeddedMultiNet(decimalEncoder= encoderMultiNet2, batchSize = 30,  lookback=50)
-        [xNotes, xTimes], [yNotes, yTimes] = datagen[0]
-        self.assertEqual(xNotes.shape, xTimes.shape)
-
+    def test_play_sample(self):
+        mp = MidiParser((46, 84), 1/128, True, "durational", "test/test_data/midis", "DEBUG")
+        parsed = mp.parse()
+        encoder = DecimalEncoderMultiNet(parsed)
+        encoded = encoder.encode()
+        datagen = DataGenEmbeddedMultiNet(encoded, 32, 100, 5)
+        data = datagen.__getitem__(5)
+        notes = data[0][0][0]
+        times = data[0][1][0]
+        piece = np.stack([datagen.ordEnc.inverse_transform([(notes[i], times[i])]) for i in range(len(notes))]).reshape(-1,2)
+        piece = MultiNetPiece(piece, 1/128)
+        piece.play()
 
 
 

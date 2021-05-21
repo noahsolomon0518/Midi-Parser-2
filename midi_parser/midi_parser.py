@@ -58,7 +58,7 @@ def findMidis(folder, r=True):
 
 
 class MidiParser:
-    def __init__(self, noteRange, smallestTimeUnit, convertToC, timeMeasurement, folder = None, debugLevel = logging.ERROR):
+    def __init__(self, noteRange, smallestTimeUnit, convertToC, timeMeasurement, mode = "both", folder = None, debugLevel = logging.ERROR):
         """
         General use parser for midis
 
@@ -79,6 +79,7 @@ class MidiParser:
         debugLevel: str -> ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
             Level of verbose, debug being highest, critical being lowest
         """
+        self.mode = mode
         logger.handlers[0].setLevel(debugLevel)
         self.logger = logger
         self.noteRange = noteRange
@@ -125,7 +126,7 @@ class MidiParser:
         ots = []
         self.midos = parseToMidos(self.midiPaths)
         for _mido in self.midos:
-            ot = OneTrack(_mido, self.noteRange, self.smallestTimeUnit, self.convertToC, self.timeMeasurement)
+            ot = OneTrack(_mido, self.noteRange, self.smallestTimeUnit, self.convertToC, self.timeMeasurement, self.mode)
             if(ot.valid):
                 ots.append(ot.track)
         self.logger.info("Successfully parsed {} midis".format(len(ots)))
@@ -325,11 +326,12 @@ class OneTrack:
         "B":11
     }
     
-    def __init__(self, mido, noteRange, smallestTimeUnit, convertToC, timeMeasurement, name = None):
+    def __init__(self, mido, noteRange, smallestTimeUnit, convertToC, timeMeasurement, mode = "both", name = None):
         """
         OneTracks automatically perform many functions that decimal encoders need in order to do their encoding.
         As the name suggest the tracks of a midi are flattened to one. 
         """
+        self.mode = mode
         self.minNote, self.maxNote = noteRange
         self.convertToC = convertToC
         try:
@@ -352,8 +354,8 @@ class OneTrack:
             if(timeMeasurement=="durational"):
                 self._convertDurational()
             self._applyConstraints()
-        else:
-            logger.debug("No key signature found for {}".format(self.name))
+
+        
         
     
 
@@ -438,6 +440,13 @@ class OneTrack:
 
     def _checkValid(self):
         if(self.convertToC == True and self.key == None):
+            logger.debug("No key signature found for {}".format(self.name))
+            return False
+        if("m" in self.key and self.mode == "major"):
+            logger.debug("Piece key of {} is minor not major".format(self.name))
+            return False
+        if("m" not in self.key and self.mode == "minor"):
+            logger.debug("Piece key of {} is major not minor".format(self.name))
             return False
         return True
 

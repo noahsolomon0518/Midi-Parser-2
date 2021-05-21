@@ -139,42 +139,54 @@ class TestMusicGeneratorMultiNet(TestCase):
         musicGen = GeneratorMultiNet(model, dataGen, 1/64)
         musicGen.generate(1,100).play()
 
-
-
-
-
 '''
+
+parser = MidiParser((46,84), 1/64, True, "durational", "test/test_data/midis/Bwv768 Chorale and Variations")
+parsed = parser.parse()
+encoder = DecimalEncoderMultiNet(parsed)
+dataGen = DataGenEmbeddedMultiNet(encoder.encode(), 32, 100, 5)
+
+nClassesNotes = dataGen.nClassesNotes
+nClassesTimes = dataGen.nClassesTimes
+print(nClassesNotes, nClassesTimes)
+nClassesMultiNet = nClassesTimes + nClassesNotes 
+
+
 from keras.models import Model, Input
 from keras.layers import Dense, LSTM, concatenate, Embedding
 
+
+
+
+
 noteIn = Input(shape = (lookback,))
-noteEmbed = Embedding(nClassesNotesMultiNet, 20, input_length=lookback)(noteIn)
+noteEmbed = Embedding(nClassesNotes, 20, input_length=lookback)(noteIn)
 
 timeIn = Input(shape = (lookback,))
-timeEmbed = Embedding(nClassesTimesMultiNet, 20, input_length=lookback)(timeIn)
+timeEmbed = Embedding(nClassesTimes, 20, input_length=lookback)(timeIn)
 
 concated = concatenate([noteEmbed, timeEmbed])
 
 lstmNote = LSTM(64)(concated)
-noteOut = Dense(nClassesNotesMultiNet, activation = 'softmax')(lstmNote)
+noteOut = Dense(nClassesNotes, activation = 'softmax')(lstmNote)
 
 
 
 lstmTime = LSTM(64)(concated)
 timeOut = concatenate([noteOut, lstmTime])
-timeOut = Dense(nClassesTimesMultiNet, activation = "softmax")(timeOut)
+timeOut = Dense(nClassesTimes, activation = "softmax")(timeOut)
 
 modelEmbed = Model([noteIn, timeIn],[noteOut,timeOut])
 modelEmbed.compile(optimizer = 'rmsprop', loss = ['categorical_crossentropy','categorical_crossentropy'], metrics = ['accuracy'])
-
-modelEmbed.fit(datagenEmbeddedMultiNet , epochs = 10)
+modelEmbed.summary()
+modelEmbed.fit(dataGen , epochs = 10)
 modelEmbed.save("test/test_data/models/test_model_embedded_multinet.h5")
 '''
-"""
-encoderMultiNet2 = DecimalEncoderMultiNet2("test/test_data/midis", 1/64, nClassesTimes, noteRange= noteRange)
-datagenEmbeddedMultiNet = DataGenEmbeddedMultiNet(encoderMultiNet2, lookback = lookback)
-nClassesNotesMultiNet = 48+1+1
-nClassesTimesMultiNet = 40
+
+parser = MidiParser((46,84), 1/64, True, "durational", "test/test_data/midis/Bwv768 Chorale and Variations")
+parsed = parser.parse()
+encoder = DecimalEncoderMultiNet(parsed)
+dataGen = DataGenEmbeddedMultiNet(encoder.encode(), 32, 100, 5)
 modelEmbed = load_model("test/test_data/models/test_model_embedded_multinet.h5")
 
 
@@ -183,23 +195,13 @@ modelEmbed = load_model("test/test_data/models/test_model_embedded_multinet.h5")
 class TestMusicGeneratorEmbeddedMultiNet(TestCase):
 
     def test_generate(self):
-        musicGen = GeneratorEmbeddedMultiNet(modelEmbed, datagenEmbeddedMultiNet, loo)
+        pass
+        musicGen = GeneratorEmbeddedMultiNet(modelEmbed, dataGen, 1/64)
         musicGen.generate(temp = 1, nNotes = 100, sampleTopProbs = 3).play()
 
 
 
 
-class Sampler(TestCase):
-    
-    
-    
-    def test_sampling(self):
-        for i in range(30):
-            top = sampleTop([[0.4,0.1,0.01,0.09,0.4]], 3)
-            self.assertGreaterEqual(top, 0.1)
-        
-
-
 
 
 
@@ -212,7 +214,7 @@ class Sampler(TestCase):
         
 
 
-
+"""
 
 #data cleaning
 

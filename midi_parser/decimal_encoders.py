@@ -2,7 +2,7 @@
 
 from midi_parser.midi_parser import RelativeNote, DurationalNote
 from mido import MidiFile
-from .one_tracks import *
+
 
 from os import walk
 from os import path

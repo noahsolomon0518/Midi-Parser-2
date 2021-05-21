@@ -1,7 +1,7 @@
 #Keras data generator classes for each type of neural network
 
 
-from sklearn.preprocessing import OneHotEncoder, LabelEncoder
+from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
 
 import keras
 import numpy as np
@@ -43,11 +43,11 @@ class DataGen(keras.utils.Sequence):
     def __getitem__(self, index):
         xIndices, yIndices = self._getXYIndexStarts(index)
         xEncodedSamples, yEncodedSamples = self._getXYEncodedSamples(xIndices,yIndices)
-        return self._oneHotEncodeBatch(xEncodedSamples, yEncodedSamples)
+        return self._encodeBatch(xEncodedSamples, yEncodedSamples)
 
 
-    def _oneHotEncodeBatch(self, xEncodedSamples, yEncodedSamples):
-        raise NotImplementedError("Must include _oneHotEncodeBatch() function")
+    def _encodeBatch(self, xEncodedSamples, yEncodedSamples):
+        raise NotImplementedError("Must include _encodeBatch() function")
 
     def _calculateRange(self):
         _range = []
@@ -109,7 +109,7 @@ class DataGenOnOff(DataGen):
         self.ohe = OneHotEncoder(categories=self.eventRange, sparse=False)
         
 
-    def _oneHotEncodeBatch(self, xEncodedSamples, yEncodedSamples):
+    def _encodeBatch(self, xEncodedSamples, yEncodedSamples):
         xSamples = np.array([self.ohe.fit_transform(sample.reshape(-1,1)) for sample in xEncodedSamples])
         ySamples = self.ohe.fit_transform(yEncodedSamples.reshape(-1,1))
         return xSamples, ySamples
@@ -130,7 +130,7 @@ class DataGenMultiNet(DataGen):
         self.nClassesNotes = len(self.eventRange[0])
         self.nClassesTimes = len(self.eventRange[1])
 
-    def _oneHotEncodeBatch(self, xEncodedSamples, yEncodedSamples):
+    def _encodeBatch(self, xEncodedSamples, yEncodedSamples):
         xSamples = np.array([self.ohe.fit_transform(sample) for sample in xEncodedSamples])
         y = self.ohe.fit_transform(yEncodedSamples)
         yNotes = y[:,:self.nClassesNotes]
@@ -142,37 +142,23 @@ class DataGenMultiNet(DataGen):
 
 
 class DataGenEmbeddedMultiNet(DataGenMultiNet):
-    def __init__(self, decimalEncoder,  batchSize=32, lookback=50, gap = 5):
-        _rangeNotes = np.arange(decimalEncoder.minNote, decimalEncoder.maxNote+1)
-        _rangeNotes = np.append(_rangeNotes,300)
-        _rangeTimes = np.arange(0,decimalEncoder.nClassesTimes)
-        self.noteEnc = LabelEncoder().fit(_rangeNotes)
-        self.timeEnc = LabelEncoder().fit(_rangeTimes)
-        super().__init__(decimalEncoder=decimalEncoder, batchSize=batchSize,lookback=lookback, gap=gap)
+    def __init__(self, encodedMidis,  batchSize, lookback, gap):
+        super().__init__(encodedMidis, batchSize=batchSize, lookback=lookback, gap=gap)
+        self.ordEnc = OrdinalEncoder(categories=self.eventRange)
+        self.ohe = OneHotEncoder(categories=self.eventRange, sparse=False)
+        self.nClassesNotes = len(self.eventRange[0])
+        self.nClassesTimes = len(self.eventRange[1])
 
 
-    #Annoyingly complicated way to get samples
-    def __getitem__(self, index):
-        xIndices = self.indices[index*self.batchSize:(index+1)*self.batchSize]
-        yIndices = np.array(list(map(lambda x: (x[0], x[1]+self.lookback),xIndices)))
-        
+    def _encodeBatch(self, xEncodedSamples, yEncodedSamples):
+        x = np.array([self.ordEnc.fit_transform(sample) for sample in xEncodedSamples])
+        y = self.ohe.fit_transform(yEncodedSamples)
 
-        xEncoded = np.array(list(map(lambda x: self._mapX(x), xIndices)))
-        yEncoded = np.array(list(map(lambda y: self._mapY(y), yIndices)))
-        xNotes, xTimes, yNotes, yTimes = self.__data_generation(xEncoded, yEncoded)
-   
-        return [xNotes,xTimes], [yNotes, yTimes]
-
-
-    def __data_generation(self, xEncoded, yEncoded):
-        #Encodes notes and times to integers so can be seperately inputted into an embedding
-        y = self.ohe.fit_transform(yEncoded)
-        xNotes = np.array([self.noteEnc.transform(sample[:,0]) for sample in xEncoded])
-        xTimes = np.array([self.timeEnc.transform(sample[:,1]) for sample in xEncoded])
+        xNotes = x[:,:,0]
+        xTimes = x[:,:,1]
         yNotes = y[:,:self.nClassesNotes]
         yTimes = y[:,self.nClassesNotes:]
-        return (xNotes, xTimes, yNotes, yTimes)
-
+        return (xNotes,xTimes), (yNotes,yTimes)
 
 
 
