@@ -458,7 +458,7 @@ class OneTrack:
         if(note.type!="time_unit"):
             if(note.pitch>self.maxNote):
                 octavesToShift = (((note.pitch-self.maxNote)//12) + 1)
-                note.trasnpose(-12 * octavesToShift)
+                note.transpose(-12 * octavesToShift)
             elif(note.pitch<self.minNote):
                 octavesToShift = (((self.minNote - note.pitch)//12) + 1)
                 note.transpose(12 * octavesToShift)

@@ -20,25 +20,43 @@ class DataGen(keras.utils.Sequence):
         ----------
         encodedMidis: list[list]
             List of encoded pieces
-        noteRange: list
-            List of all the possible notes
-        timeRange: list
-            List of all the possible times
         batchSize: int
             Number of samples that will be evaluated before neural network adjusts weights
         lookback: int
             Number of previous notes that the network has before it makes a predictions
         gap: int
             Interval at which new samples are generated in a piece
+        dimensions: list
+            List of the different number of classes for each category
         """
         self.encodedMidis = encodedMidis
         self.batchSize = batchSize
         self.lookback = lookback
         self.eventRange = self._calculateRange()
         self.gap = gap
-        self.indices = self._getIndices()
-        self._shuffleInds()
+        self.indices = self.getIndices()
+        self.shuffleInds()
+        self.updateEncoders()
 
+
+    def reInitialize(self, encodedMidis):
+        """
+        For creating validation datagen that keeps encodings
+
+        Parameters
+        ----------
+        encodedMidis: list[list]
+            Most likely validation/testing data
+        """
+        datagen = self.__class__(encodedMidis, self.batchSize, self.lookback, self.gap)
+        datagen.eventRange = self.eventRange
+        datagen.updateEncoders()
+        datagen.indices = datagen.getIndices()
+        datagen.shuffleInds()
+        return datagen
+    
+    def updateEncoders(self):
+        raise NotImplementedError("Must include updateEncoders()")
 
     def __getitem__(self, index):
         xIndices, yIndices = self._getXYIndexStarts(index)
@@ -64,6 +82,7 @@ class DataGen(keras.utils.Sequence):
             _range.append(rangeEvents)
         return _range
 
+
     #Gets x and y indices starting point in form of (<piece Ind>, <sample Ind>) based on batchsize
     def _getXYIndexStarts(self, index):
         xIndices = self.indices[index*self.batchSize:(index+1)*self.batchSize]
@@ -76,7 +95,7 @@ class DataGen(keras.utils.Sequence):
         return np.stack(xEncodedSamples), np.stack(yEncodedSamples)
 
     #Grabs every possible sample starting place as list of (<piece ind>, <sample ind>)
-    def _getIndices(self):
+    def getIndices(self):
         indicesByPiece = [self._getIndicesByPiece(piece) for piece in self.encodedMidis]
         indicesByPieceAndSample = [self._getIndicesByPieceAndSample(indicesByPiece[i], i) for i in range(len(indicesByPiece))]
         return list(itertools.chain.from_iterable(indicesByPieceAndSample))
@@ -89,11 +108,11 @@ class DataGen(keras.utils.Sequence):
     def _getIndicesByPieceAndSample(self, indices, pieceInd):
         return [(pieceInd, i) for i in indices]
 
-    def _shuffleInds(self):
+    def shuffleInds(self):
         np.random.shuffle(self.indices)
 
     def on_epoch_end(self):
-        self._shuffleInds()
+        self.shuffleInds()
 
     def __len__(self):
         distinctSamples = len(self.indices)
@@ -102,10 +121,13 @@ class DataGen(keras.utils.Sequence):
 
 
 
+
 class DataGenOnOff(DataGen):
 
     def __init__(self, encodedMidis,  batchSize, lookback, gap):
         super().__init__(encodedMidis, batchSize=batchSize, lookback=lookback, gap=gap)
+    
+    def updateEncoders(self):
         self.ohe = OneHotEncoder(categories=self.eventRange, sparse=False)
         
 
@@ -125,8 +147,10 @@ class DataGenMultiNet(DataGen):
 
     def __init__(self, encodedMidis,  batchSize, lookback, gap):
         super().__init__(encodedMidis, batchSize=batchSize, lookback=lookback, gap=gap)
-        self.ohe = OneHotEncoder(categories=self.eventRange, sparse=False)
 
+    
+    def updateEncoders(self):
+        self.ohe = OneHotEncoder(categories=self.eventRange, sparse=False)
         self.nClassesNotes = len(self.eventRange[0])
         self.nClassesTimes = len(self.eventRange[1])
 
@@ -144,6 +168,9 @@ class DataGenMultiNet(DataGen):
 class DataGenEmbeddedMultiNet(DataGenMultiNet):
     def __init__(self, encodedMidis,  batchSize, lookback, gap):
         super().__init__(encodedMidis, batchSize=batchSize, lookback=lookback, gap=gap)
+        
+
+    def updateEncoders(self):
         self.ordEnc = OrdinalEncoder(categories=self.eventRange)
         self.ohe = OneHotEncoder(categories=self.eventRange, sparse=False)
         self.nClassesNotes = len(self.eventRange[0])
@@ -161,4 +188,34 @@ class DataGenEmbeddedMultiNet(DataGenMultiNet):
         return (xNotes,xTimes), (yNotes,yTimes)
 
 
+
+
+class DataGenGuideNet(DataGen):
+
+    def __init__(self, encodedMidis, batchSize, lookback, gap):
+        super().__init__(encodedMidis, batchSize=batchSize, lookback=lookback, gap=gap)
+        
+    
+    def updateEncoders(self):
+        self.nClassesNotes = len(self.eventRange[0])
+        self.nClassesTimes = len(self.eventRange[1])
+        self.ordEnc = OrdinalEncoder(categories=self.eventRange)
+        self.ohe = OneHotEncoder(categories=self.eventRange, sparse=False)
+
+
+    def _getXYEncodedSamples(self, xIndices, yIndices):
+        xEncodedSamples = [np.array(self.encodedMidis[xStartInd[0]])[xStartInd[1]:xStartInd[1]+self.lookback] for xStartInd in np.array(xIndices)]
+        yEncodedSamples = [np.array(self.encodedMidis[xStartInd[0]])[xStartInd[1]+1:xStartInd[1]+self.lookback+1] for xStartInd in np.array(xIndices)]
+        return np.stack(xEncodedSamples), np.stack(yEncodedSamples)
+
+    def _encodeBatch(self, xEncodedSamples, yEncodedSamples):
+        x = np.array([self.ordEnc.fit_transform(sample) for sample in xEncodedSamples])
+        y = np.array([self.ohe.fit_transform(sample) for sample in yEncodedSamples])
+
+        xNotes = x[:,:,0]
+        xTimes = x[:,:,1]
+        yNotes = y[:,:,:self.nClassesNotes]
+        yTimes = y[:,:,self.nClassesNotes:]
+
+        return (xNotes,xTimes), (yNotes,yTimes)
 

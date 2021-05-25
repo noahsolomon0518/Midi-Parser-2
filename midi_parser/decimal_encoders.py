@@ -16,10 +16,12 @@ class DecimalEncoder:
 
         Parameters
         ----------
+        parsedMidis: list[list]
+            Midis that were parsed by MidiParser
 
         """
-
         self.parsedMidis = parsedMidis
+    
 
     def encode(self):
         return [self._encodeOne(piece) for piece in self.parsedMidis]
@@ -51,7 +53,7 @@ class DecimalEncoderOnOff(DecimalEncoder):
         oneEncoded = []
         for note in piece:
             if(note.time>0):
-                oneEncoded.append(299+note.time)     
+                oneEncoded.append(299+min([note.time, ]))     
             if(note.type == "note_on"):
                 oneEncoded.append(150+note.pitch)
             else:

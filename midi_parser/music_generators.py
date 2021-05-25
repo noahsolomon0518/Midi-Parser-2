@@ -205,31 +205,6 @@ class GeneratorEmbeddedMultiNet(Generator):
         return MultiNetPiece(piece, self.smallestTimeUnit)
 
 
-            
-    def _generate2(self, temp, nNotes, sampleTopProbs): 
-        piece = []
-        choiceInd = np.random.randint(0,self.datagen.batchSize)
-        notes = self.datagen[0][0][choiceInd]
-        times = self.datagen[0][1][choiceInd]
-        generated = np.stack([self.datagen.ordEnc.inverse_transform([(notes[i], times[i])]) for i in range(len(notes))]).reshape(-1,2)
-        for i in range(nNotes):
-            priorNotes = self._getPriorNotes(generated)
-            priorTimes = self._getPriorNotes(generated)
-            predNotes, predTimes = self.model.predict([priorNotes, priorTimes])
-            if sampleTop:
-                argmaxNotes = sampleTop(predNotes, n = sampleTopProbs, temperature= temp)    
-                argmaxTimes = sampleTop(predTimes, n = sampleTopProbs, temperature= temp)    
-
-            else:
-                argmaxNotes = sample(predNotes[0], temp)
-                argmaxTimes = sample(predTimes[0], temp)
-            
-            note = self.datagen.ohe.categories_[0][argmaxNotes]
-            time = self.datagen.ohe.categories_[1][argmaxTimes]
-            generated = np.concatenate([generated,[[argmaxNotes], [argmaxTimes]]], axis = 1)
-        print(piece)
-        piece = self._convertToPieceObj(piece)
-        return piece
     
     def _convertToPieceObj(self, piece):
         return MultiNetPiece(piece, self.smallestTimeUnit)
