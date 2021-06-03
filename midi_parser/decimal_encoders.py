@@ -18,7 +18,8 @@ class DecimalEncoder:
         ----------
         parsedMidis: list[list]
             Midis that were parsed by MidiParser
-
+        ranges: dict[list]
+            All possible values that each dimension can get
         """
         self.parsedMidis = parsedMidis
     
@@ -26,26 +27,36 @@ class DecimalEncoder:
     def encode(self):
         return [self._encodeOne(piece) for piece in self.parsedMidis]
 
+        
+    
     #Abstract function that decimal encoders must include.
     def _encodeOne(self, piece):
         raise NotImplementedError("Add encode() function")
 
 
+class DecimalEncoderWithTimes(DecimalEncoder):
+    def __init__(self, parsedMidis, nClassesTimes):
+        self.nClassesTimes = nClassesTimes
+        super().__init__(parsedMidis)
 
 
 
-class DecimalEncoderOnOff(DecimalEncoder):
-    def __init__(self, parsedMidis):
+class DecimalEncoderOnOff(DecimalEncoderWithTimes):
+    def __init__(self, parsedMidis, nClassesTimes):
         """
         note_ons -> <relative note> + 150
         note_offs -> <relative note>
         time_unit -> 299 + <time>
+
+        ranges:
+            pitches
+            times
         """
         try:
             assert type(parsedMidis[0][0]) == RelativeNote
         except AssertionError:
             raise AssertionError("Parsed midis must have relative notes. Use timeMeasurement = \"relative\" in MidiParser init") 
-        super().__init__(parsedMidis)
+        super().__init__(parsedMidis, nClassesTimes)
         
     
 
@@ -53,7 +64,7 @@ class DecimalEncoderOnOff(DecimalEncoder):
         oneEncoded = []
         for note in piece:
             if(note.time>0):
-                oneEncoded.append(299+min([note.time, ]))     
+                oneEncoded.append(299+min([note.time, self.nClassesTimes]))     
             if(note.type == "note_on"):
                 oneEncoded.append(150+note.pitch)
             else:
@@ -75,12 +86,12 @@ class DecimalEncoderOnOff(DecimalEncoder):
             ordered.extend(sorted(list(set(curStream))))
             pointer+=1
         return ordered
+    
 
 
 
-
-class DecimalEncoderMultiNet(DecimalEncoder):
-    def __init__(self, parsedMidis):
+class DecimalEncoderMultiNet(DecimalEncoderWithTimes):
+    def __init__(self, parsedMidis, nClassesTimes):
         """
         Note ons -> [<pitch>, <duration>]
         """
@@ -89,7 +100,7 @@ class DecimalEncoderMultiNet(DecimalEncoder):
         except AssertionError:
             raise AssertionError("Parsed midis must have durational notes. Use timeMeasurement = \"durational\" in MidiParser init") 
         
-        super().__init__(parsedMidis)
+        super().__init__(parsedMidis, nClassesTimes)
       
 
 
@@ -118,5 +129,5 @@ class DecimalEncoderMultiNet(DecimalEncoder):
         if(evt.type == "time_unit"):
             return [300, evt.time]
         return [evt.pitch, evt.time]
-            
-            
+    
+

@@ -1,13 +1,14 @@
 #Keras data generator classes for each type of neural network
 
 
+from numpy.core.fromnumeric import sort
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
 
 import keras
 import numpy as np
 from .pieces import MultiNetPiece
 import itertools
-
+import copy
 
 
 
@@ -20,6 +21,8 @@ class DataGen(keras.utils.Sequence):
         ----------
         encodedMidis: list[list]
             List of encoded pieces
+        ranges: dict[list]
+            Includes the ranges for notes
         batchSize: int
             Number of samples that will be evaluated before neural network adjusts weights
         lookback: int
@@ -30,31 +33,38 @@ class DataGen(keras.utils.Sequence):
             List of the different number of classes for each category
         """
         self.encodedMidis = encodedMidis
+        self.ranges = self.getRanges()
         self.batchSize = batchSize
         self.lookback = lookback
-        self.eventRange = self._calculateRange()
         self.gap = gap
         self.indices = self.getIndices()
         self.shuffleInds()
         self.updateEncoders()
 
+    def getRanges(self):
+        if(type(self.encodedMidis[0][0])!=list):
+            print([list(set(itertools.chain.from_iterable(self.encodedMidis)))])
+            return [list(set(itertools.chain.from_iterable(self.encodedMidis)))]
+        ranges = []
+        for i in range(len(self.encodedMidis[0][0])):
+            currentRange = sort(list(set(np.array(list(itertools.chain.from_iterable(self.encodedMidis)))[:,i])))
+            ranges.append(currentRange)
+        return ranges
 
-    def reInitialize(self, encodedMidis):
-        """
-        For creating validation datagen that keeps encodings
 
-        Parameters
-        ----------
-        encodedMidis: list[list]
-            Most likely validation/testing data
-        """
-        datagen = self.__class__(encodedMidis, self.batchSize, self.lookback, self.gap)
-        datagen.eventRange = self.eventRange
-        datagen.updateEncoders()
-        datagen.indices = datagen.getIndices()
-        datagen.shuffleInds()
-        return datagen
-    
+
+    def validationSplit(self, test_size):
+        print(np.array(self.encodedMidis))
+        nTestSamples = int(test_size*len(self.encodedMidis))
+        self.shuffleInds()
+        testSamples, self.encodedMidis = self.encodedMidis[:nTestSamples], self.encodedMidis[nTestSamples:]
+        self.indices = self.getIndices()
+        validationDatagen = copy.deepcopy(self)
+        validationDatagen.encodedMidis = testSamples
+        validationDatagen.indices = validationDatagen.getIndices()
+        return validationDatagen
+
+
     def updateEncoders(self):
         raise NotImplementedError("Must include updateEncoders()")
 
@@ -67,20 +77,6 @@ class DataGen(keras.utils.Sequence):
     def _encodeBatch(self, xEncodedSamples, yEncodedSamples):
         raise NotImplementedError("Must include _encodeBatch() function")
 
-    def _calculateRange(self):
-        _range = []
-        nFeatures = len(self.encodedMidis[0][0]) if type(self.encodedMidis[0][0]) == list else 1
-        if(nFeatures>1):
-            for i in range(nFeatures):
-                eventsPerPiece = [list(np.array(piece)[:,i]) for piece in self.encodedMidis]
-                rangeEvents= list(set(itertools.chain.from_iterable(eventsPerPiece)))
-                rangeEvents.sort()
-                _range.append(rangeEvents)
-        else:
-            rangeEvents = list(set(itertools.chain.from_iterable(self.encodedMidis)))
-            rangeEvents.sort()
-            _range.append(rangeEvents)
-        return _range
 
 
     #Gets x and y indices starting point in form of (<piece Ind>, <sample Ind>) based on batchsize
@@ -122,13 +118,13 @@ class DataGen(keras.utils.Sequence):
 
 
 
-class DataGenOnOff(DataGen):
+class DataGenOnOffNet(DataGen):
 
-    def __init__(self, encodedMidis,  batchSize, lookback, gap):
-        super().__init__(encodedMidis, batchSize=batchSize, lookback=lookback, gap=gap)
+    def __init__(self, encodedMidis,   batchSize, lookback, gap):
+        super().__init__(encodedMidis,  batchSize=batchSize, lookback=lookback, gap=gap)
     
     def updateEncoders(self):
-        self.ohe = OneHotEncoder(categories=self.eventRange, sparse=False)
+        self.ohe = OneHotEncoder(categories=self.ranges, sparse=False)
         
 
     def _encodeBatch(self, xEncodedSamples, yEncodedSamples):
@@ -137,22 +133,33 @@ class DataGenOnOff(DataGen):
         return xSamples, ySamples
         
 
+class DataGenEmbeddedOnOffNet(DataGen):
 
+    def __init__(self, encodedMidis,  batchSize, lookback, gap):
+        super().__init__(encodedMidis, batchSize=batchSize, lookback=lookback, gap=gap)
 
+    def updateEncoders(self):
+        self.ordEnc = OrdinalEncoder(categories=self.ranges)
+        self.ohe = OneHotEncoder(categories=self.ranges, sparse=False)
+
+    def _encodeBatch(self, xEncodedSamples, yEncodedSamples):
+        x = np.array([self.ordEnc.fit_transform(sample.reshape(-1,1)) for sample in xEncodedSamples]).reshape(self.batchSize, self.lookback)
+        y = self.ohe.fit_transform(yEncodedSamples.reshape(-1,1))
+        return x,y
 
 
 
 
 class DataGenMultiNet(DataGen):
 
-    def __init__(self, encodedMidis,  batchSize, lookback, gap):
+    def __init__(self, encodedMidis, batchSize, lookback, gap):
         super().__init__(encodedMidis, batchSize=batchSize, lookback=lookback, gap=gap)
 
     
     def updateEncoders(self):
-        self.ohe = OneHotEncoder(categories=self.eventRange, sparse=False)
-        self.nClassesNotes = len(self.eventRange[0])
-        self.nClassesTimes = len(self.eventRange[1])
+        self.ohe = OneHotEncoder(categories=self.ranges, sparse=False)
+        self.nClassesNotes = len(self.ranges[0])
+        self.nClassesTimes = len(self.ranges[1])
 
     def _encodeBatch(self, xEncodedSamples, yEncodedSamples):
         xSamples = np.array([self.ohe.fit_transform(sample) for sample in xEncodedSamples])
@@ -171,10 +178,10 @@ class DataGenEmbeddedMultiNet(DataGenMultiNet):
         
 
     def updateEncoders(self):
-        self.ordEnc = OrdinalEncoder(categories=self.eventRange)
-        self.ohe = OneHotEncoder(categories=self.eventRange, sparse=False)
-        self.nClassesNotes = len(self.eventRange[0])
-        self.nClassesTimes = len(self.eventRange[1])
+        self.nClassesNotes = len(self.ranges[0])
+        self.nClassesTimes = len(self.ranges[1])
+        self.ordEnc = OrdinalEncoder(categories=self.ranges)
+        self.ohe = OneHotEncoder(categories=self.ranges, sparse=False)
 
 
     def _encodeBatch(self, xEncodedSamples, yEncodedSamples):
@@ -197,10 +204,10 @@ class DataGenGuideNet(DataGen):
         
     
     def updateEncoders(self):
-        self.nClassesNotes = len(self.eventRange[0])
-        self.nClassesTimes = len(self.eventRange[1])
-        self.ordEnc = OrdinalEncoder(categories=self.eventRange)
-        self.ohe = OneHotEncoder(categories=self.eventRange, sparse=False)
+        self.nClassesNotes = len(self.ranges[0])
+        self.nClassesTimes = len(self.ranges[1])
+        self.ordEnc = OrdinalEncoder(categories=self.ranges)
+        self.ohe = OneHotEncoder(categories=self.ranges, sparse=False)
 
 
     def _getXYEncodedSamples(self, xIndices, yIndices):

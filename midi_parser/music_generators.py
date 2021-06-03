@@ -124,7 +124,7 @@ class GeneratorOnOff(Generator):
             generated = np.concatenate([generated,preds])
         piece = self._convertToPieceObj(piece)
         return piece
-    
+     
     def _convertToPieceObj(self, piece):
         return OnOffPiece(piece, self.smallestTimeUnit)
     

@@ -27,6 +27,7 @@ class TestMidiParser(TestCase):
     def test_parse_relative(self):
         mp = MidiParser((46,84), 1/32, True, "relative", mode = "major", folder = "test/test_data/midis", debugLevel = "DEBUG")
         parsed = mp.parse()
+        print(parsed)
         self.assertGreater(len(parsed),0)
 
     

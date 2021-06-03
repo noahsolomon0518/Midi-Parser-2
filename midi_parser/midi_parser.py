@@ -9,6 +9,7 @@ from mido import MetaMessage, MidiTrack
 import math
 import logging
 import pickle
+import pandas as pd
 
 """
 This module provides tools that are strictly used for parsing midis
@@ -205,6 +206,13 @@ class Note:
         self.time = self._noneify(time)
         self.velocity = self._noneify(velocity)
         self.instrument = self._noneify(instrument)
+    
+
+    def __iter__(self):
+        return iter([self.type, self.time, self.pitch, self.instrument, self.velocity])
+
+
+
 
     def transpose(self, n):
         """
@@ -386,7 +394,7 @@ class OneTrack:
         for msg in track:
             absoluteTime += msg.time
             if(self._isNote(msg)):
-                absoluteTrack.append(AbsoluteNote(msg.type, absoluteTime, msg.note, velocity=msg.velocity))
+                absoluteTrack.append(AbsoluteNote(msg.type, absoluteTime, msg.note, instrument=msg.channel, velocity=msg.velocity))
         return absoluteTrack
 
     
@@ -394,15 +402,16 @@ class OneTrack:
         
         return [absoluteTrack[0].convertToRelative(0)] + [absoluteTrack[i].convertToRelative(absoluteTrack[i].time - absoluteTrack[i-1].time) for i in range(len(absoluteTrack)) if i >0]
     
-
+    def __iter__(self):
+        return iter([list(note) + [self.name] for note in self.track])
 
 
 
     def _applyConstraints(self):
         if(self.convertToC):
             for note in self.track:
-                self._applyNoteRange(note)
                 self._convertToC(note)
+                self._applyNoteRange(note)
                 self._timeConversion(note)
         else:
             for note in self.track:
@@ -496,20 +505,6 @@ class OneTrack:
 
 
 
-
-class MidiAnalyzer:
-
-    def __init__(self, folder):
-        """
-        Used for configuring parameters in MidiParser. For example smallest time unit
-
-        Parameters
-        ----------
-        folder: str
-            folder of midis
-        """
-
-        self.midos = parseToMidos(findMidis(folder))
 
 
 
