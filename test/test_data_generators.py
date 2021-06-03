@@ -2,15 +2,15 @@ from midi_parser.midi_parser import MidiParser
 from unittest import TestCase
 import numpy
 from midi_parser.pieces import OnOffPiece, MultiNetPiece
-from midi_parser.data_generators import DataGenEmbeddedOnOffNet, DataGenGuideNet, DataGenOnOffNet, DataGenMultiNet, DataGenEmbeddedMultiNet, DataGen
-from midi_parser.decimal_encoders import DecimalEncoderOnOff, DecimalEncoderMultiNet
+from midi_parser.data_generators import DataGenEmbeddedOnOffNet, DataGenGuideNet, DataGenMiniBachStyle, DataGenOnOffNet, DataGenMultiNet, DataGenEmbeddedMultiNet, DataGen
+from midi_parser.decimal_encoders import DecimalEncoderMiniBachStyle, DecimalEncoderOnOff, DecimalEncoderMultiNet
 
 
 relativeParsed = MidiParser.deSerialize("test/test_data/serialized_relative")
 relativeParsed = MidiParser((46,84), 1/128, True, "relative", mode="both",  folder = "test/test_data/midis").parse()
-encoded = DecimalEncoderOnOff(relativeParsed).encode()
+encoded = DecimalEncoderOnOff(relativeParsed, 100).encode()
 durParsed = MidiParser((46,84), 1/128, True, "durational", folder = "test/test_data/midis").parse()
-encodedMultiNet = DecimalEncoderMultiNet(durParsed).encode()
+encodedMultiNet = DecimalEncoderMultiNet(durParsed, 100).encode()
 
 
 class TestDataGen(TestCase):
@@ -167,6 +167,18 @@ class TestDataGeneratorGuideNet(TestCase):
         valDatagen = datagen.validationSplit(0.2)
         self.assertEqual(len(datagen.encodedMidis), 8)
         self.assertEqual(len(valDatagen.encodedMidis), 2)
+
+
+
+
+
+class TestDataGeneratorMiniBach(TestCase):
+    def test_init(self):
+        mp = MidiParser((46, 84), 1/128, True, "by_time_unit", "both", "test/test_data/midis/Bwv768 Chorale and Variations", "DEBUG")
+        encoder = DecimalEncoderMiniBachStyle(mp.parse())
+        datagen = DataGenMiniBachStyle(encoder.encode(), 32, 30, 5)
+        print(datagen[0])
+        
 
 
 

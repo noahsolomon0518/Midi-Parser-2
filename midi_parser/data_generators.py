@@ -2,13 +2,15 @@
 
 
 from numpy.core.fromnumeric import sort
-from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
+from sklearn.base import ClassifierMixin
+from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, MultiLabelBinarizer
 
 import keras
 import numpy as np
 from .pieces import MultiNetPiece
 import itertools
 import copy
+from itertools import chain
 
 
 
@@ -172,6 +174,7 @@ class DataGenMultiNet(DataGen):
 
 
 
+
 class DataGenEmbeddedMultiNet(DataGenMultiNet):
     def __init__(self, encodedMidis,  batchSize, lookback, gap):
         super().__init__(encodedMidis, batchSize=batchSize, lookback=lookback, gap=gap)
@@ -226,3 +229,28 @@ class DataGenGuideNet(DataGen):
 
         return (xNotes,xTimes), (yNotes,yTimes)
 
+
+class DataGenMiniBachStyle(DataGen):
+    def __init__(self, encodedMidis, batchSize, lookback, gap):
+        super().__init__(encodedMidis, batchSize=batchSize, lookback=lookback, gap=gap)
+
+    def getRanges(self):
+        return list(set(list(chain.from_iterable(list(chain.from_iterable(self.encodedMidis))))))
+
+    def updateEncoders(self):
+        self.mlb = MultiLabelBinarizer(classes=self.ranges)
+    
+    def _encodeBatch(self, xEncodedSamples, yEncodedSamples):
+        xBatch = []
+        for batch in xEncodedSamples:
+            xSample = self.mlb.fit_transform(batch)
+            xBatch.append(xSample.reshape(-1))
+        xBatch = np.stack(xBatch)
+        yBatch = self.mlb.fit_transform(yEncodedSamples)
+        print(xBatch.shape, yBatch.shape)
+        return xBatch, yBatch
+    
+    def _getXYEncodedSamples(self, xIndices, yIndices):
+        xEncodedSamples = [self.encodedMidis[xStartInd[0]][xStartInd[1]:xStartInd[1]+self.lookback] for xStartInd in np.array(xIndices)]
+        yEncodedSamples = [self.encodedMidis[yInd[0]][yInd[1]] for yInd in np.array(yIndices)]
+        return xEncodedSamples, yEncodedSamples

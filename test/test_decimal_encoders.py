@@ -1,7 +1,7 @@
 from midi_parser.midi_parser import MidiParser
 from unittest import TestCase
 import unittest
-from midi_parser.decimal_encoders import DecimalEncoderOnOff, DecimalEncoderMultiNet
+from midi_parser.decimal_encoders import DecimalEncoderMiniBachStyle, DecimalEncoderOnOff, DecimalEncoderMultiNet
 import itertools
 from midi_parser.pieces import MultiNetPiece, OnOffPiece
 
@@ -63,6 +63,22 @@ class TestDecimalEncoderMultiNet(TestCase):
         piece = encoder.encode()[0]
         piece = MultiNetPiece(piece, 1/32)
         piece.play()
+        
+
+class TestDecimalEncoderMiniBachStyle(TestCase):
+    
+    def test_init(self):
+        mp = MidiParser((46, 84), 1/128, True, "by_time_unit", "both", "test/test_data/midis/Bwv768 Chorale and Variations", "DEBUG")
+        encoder = DecimalEncoderMiniBachStyle(mp.parse())
+    
+
+    def test_encoder(self):
+        mp = MidiParser((46, 84), 1/128, True, "by_time_unit", "both", "test/test_data/midis/Bwv768 Chorale and Variations", "DEBUG")
+        encoder = DecimalEncoderMiniBachStyle(mp.parse())
+        print(encoder.encode()[0])
+
+
+
         
 
 

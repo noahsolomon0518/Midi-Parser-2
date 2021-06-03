@@ -1,3 +1,4 @@
+from datetime import time
 import itertools
 from os import walk, path
 from mido import MidiFile
@@ -73,7 +74,7 @@ class MidiParser:
         convertToC: bool
             If all pieces should be converted to C key signature. Currently if a piece has an unknown key
             it will not be parsed. This will change in the future where the key will be predicted
-        timeMeasurement: str -> ["relative", "duration"]
+        timeMeasurement: str -> ["relative", "duration", "by_time_unit"]
             If time of a note should be measured relative to next note or the duration of a note
         folder: str
             Path of folder with midis
@@ -307,6 +308,12 @@ class DurationalNote(Note):
         """
         super().__init__(type, time, pitch = pitch, instrument = instrument, velocity = velocity)
     
+class ByTimeUnitNote(Note):
+    def __init__(self, type, time = None, pitch = None, instrument = None, velocity = None):
+        """
+        Note in moment of time. No time 
+        """
+        super().__init__(type, time = time, pitch = pitch, instrument = instrument, velocity = velocity)
 
 #Implementation is not general. Specifically for the OneTracks.
 class OneTrack:
@@ -339,6 +346,7 @@ class OneTrack:
         OneTracks automatically perform many functions that decimal encoders need in order to do their encoding.
         As the name suggest the tracks of a midi are flattened to one. 
         """
+        self.timeMeasurement = timeMeasurement
         self.mode = mode
         self.minNote, self.maxNote = noteRange
         self.convertToC = convertToC
@@ -361,6 +369,8 @@ class OneTrack:
                 logger.debug("Piece {} has length of 0".format(self.name))
             if(timeMeasurement=="durational"):
                 self._convertDurational()
+            if(timeMeasurement == "by_time_unit"):
+                self._convertByTimeUnit()
             self._applyConstraints()
 
         
@@ -384,10 +394,10 @@ class OneTrack:
         absoluteTrack = list(itertools.chain.from_iterable([self._convertAbsolute(track) for track in mido.tracks]))
         absoluteTrack.sort(key = lambda x: x.time)
 
-        relativeTrack = self._convertRelative( absoluteTrack)
+        relativeTrack = self._convertRelative(absoluteTrack)
         return relativeTrack
     
-
+    #Takes raw mido
     def _convertAbsolute(self, track):
         absoluteTime = 0
         absoluteTrack = []
@@ -397,6 +407,16 @@ class OneTrack:
                 absoluteTrack.append(AbsoluteNote(msg.type, absoluteTime, msg.note, instrument=msg.channel, velocity=msg.velocity))
         return absoluteTrack
 
+    #Takes relative track
+    def _convertByTimeUnit(self):
+        track = self.track
+        totalTimeUnits = sum([self._timeConversion(note) for note in track])+1
+        byTimeUnit = [[] for i in range(totalTimeUnits)]
+        currentTimeUnit = 0
+        for note in track:
+            byTimeUnit[currentTimeUnit].append(note)
+            currentTimeUnit+=note.time
+        self.track = byTimeUnit
     
     def _convertRelative(self, absoluteTrack):
         
@@ -408,15 +428,30 @@ class OneTrack:
 
 
     def _applyConstraints(self):
-        if(self.convertToC):
+        if(self.convertToC and self.timeMeasurement!="by_time_unit"):
             for note in self.track:
                 self._convertToC(note)
                 self._applyNoteRange(note)
                 self._timeConversion(note)
-        else:
+        if(not self.convertToC and self.timeMeasurement!="by_time_unit"):
             for note in self.track:
                 self._applyNoteRange(note)
                 self._timeConversion(note)
+
+
+        if(self.convertToC and self.timeMeasurement=="by_time_unit"):
+            for timeUnit in self.track:
+                for note in timeUnit:
+                    self._convertToC(note)
+                    self._applyNoteRange(note)
+
+        if(not self.convertToC and self.timeMeasurement=="by_time_unit"):
+            for timeUnit in self.track:
+                for note in timeUnit:
+                    self._applyNoteRange(note)
+        
+
+
 
 
             
@@ -478,6 +513,7 @@ class OneTrack:
         if(converted>0 and converted<1):
             note.time = 1
         note.time = round(converted)
+        return note.time
 
 
     def _isNote(self,msg):

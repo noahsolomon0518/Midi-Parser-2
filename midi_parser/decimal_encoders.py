@@ -129,5 +129,35 @@ class DecimalEncoderMultiNet(DecimalEncoderWithTimes):
         if(evt.type == "time_unit"):
             return [300, evt.time]
         return [evt.pitch, evt.time]
+
+
+
+
+
+class DecimalEncoderMiniBachStyle(DecimalEncoder):
+    """
+    Seperated out into each time unit and the notes that are played
+    """
+
+
+    def __init__(self, parsedMidis):
+        try:
+            assert type(parsedMidis[0][0][0]) == RelativeNote
+        except AssertionError:
+            raise AssertionError("Parsed midis must have durational notes. Use timeMeasurement = \"durational\" in MidiParser init") 
+        super().__init__(parsedMidis)
     
+    def _encodeOne(self, piece):
+        encoded = []
+        for timeUnit in piece:
+            timeUnit.sort(key = lambda x: x.pitch)
+            if(len(timeUnit)==0):
+                encoded.append(["none"])
+            else:
+                encoded.append([self._encodeEvt(note) for note in timeUnit])
+        return encoded
+
+    def _encodeEvt(self, evt):
+        return evt.type+"_"+str(evt.pitch)
+
 
